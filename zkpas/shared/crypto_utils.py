@@ -340,9 +340,9 @@ def create_zk_proof(secret: bytes, challenge: bytes) -> bytes:
     nonce = secure_random_bytes(32)
     return compute_zkp_response(secret, nonce, challenge)
 
-def verify_proof(commitment: bytes, challenge: bytes, response: bytes) -> bool:
+def verify_proof(commitment: bytes, challenge: bytes, response: bytes, public_key: ec.EllipticCurvePublicKey) -> bool:
     """Alias for ZK proof verification for validation compatibility."""
-    return verify_zkp(commitment, challenge, response, b"public_data")
+    return verify_zkp(commitment, challenge, response, public_key)
 
 def hash_data(data: bytes) -> bytes:
     """Alias for secure_hash for validation compatibility."""

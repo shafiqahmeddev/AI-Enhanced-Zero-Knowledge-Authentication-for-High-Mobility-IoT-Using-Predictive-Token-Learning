@@ -13,6 +13,7 @@ Key Features:
 - Privacy-preserving data sampling techniques
 - Differential privacy budget allocation
 - Data lineage tracking for experiment reproducibility
+- Secure data persistence using Parquet format (no pickle security risks)
 """
 
 import os
@@ -20,6 +21,7 @@ import json
 import hashlib
 import numpy as np
 import pandas as pd
+from pandas.util import hash_pandas_object
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional, Any, Union
 from dataclasses import dataclass, asdict
@@ -28,7 +30,6 @@ import logging
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.impute import SimpleImputer
-import pickle
 import random
 
 # Set up logging
@@ -201,7 +202,7 @@ class DataSubsettingManager:
         if not train_data.empty:
             train_subset = DataSubset(
                 subset_id=f"{subset_prefix}_train_{timestamp}",
-                data_path=str(self.data_root / "subsets" / f"{subset_prefix}_train.pkl"),
+                data_path=str(self.data_root / "subsets" / f"{subset_prefix}_train.parquet"),
                 metadata={
                     "split_type": "train",
                     "original_size": len(data),
@@ -221,15 +222,14 @@ class DataSubsettingManager:
             )
             
             # Save train data
-            with open(train_subset.data_path, 'wb') as f:
-                pickle.dump(train_data, f)
+            train_data.to_parquet(train_subset.data_path)
             
             subsets["train"] = train_subset
         
         if not val_data.empty:
             val_subset = DataSubset(
                 subset_id=f"{subset_prefix}_val_{timestamp}",
-                data_path=str(self.data_root / "subsets" / f"{subset_prefix}_val.pkl"),
+                data_path=str(self.data_root / "subsets" / f"{subset_prefix}_val.parquet"),
                 metadata={
                     "split_type": "validation",
                     "original_size": len(data),
@@ -249,15 +249,14 @@ class DataSubsettingManager:
             )
             
             # Save validation data
-            with open(val_subset.data_path, 'wb') as f:
-                pickle.dump(val_data, f)
+            val_data.to_parquet(val_subset.data_path)
                 
             subsets["validation"] = val_subset
         
         if not test_data.empty:
             test_subset = DataSubset(
                 subset_id=f"{subset_prefix}_test_{timestamp}",
-                data_path=str(self.data_root / "subsets" / f"{subset_prefix}_test.pkl"),
+                data_path=str(self.data_root / "subsets" / f"{subset_prefix}_test.parquet"),
                 metadata={
                     "split_type": "test",
                     "original_size": len(data),
@@ -277,8 +276,7 @@ class DataSubsettingManager:
             )
             
             # Save test data
-            with open(test_subset.data_path, 'wb') as f:
-                pickle.dump(test_data, f)
+            test_data.to_parquet(test_subset.data_path)
                 
             subsets["test"] = test_subset
         
@@ -302,8 +300,7 @@ class DataSubsettingManager:
         if isinstance(data, str):
             data = pd.read_csv(data)
         elif isinstance(data, DataSubset):
-            with open(data.data_path, 'rb') as f:
-                data = pickle.load(f)
+            data = pd.read_parquet(data.data_path)
         
         logger.info(f"Validating data quality for dataset with shape: {data.shape}")
         
@@ -434,7 +431,7 @@ class DataSubsettingManager:
         Args:
             data: Input DataFrame
             sample_fraction: Fraction of data to sample
-            noise_level: Level of differential privacy noise to add
+            noise_level: Privacy budget parameter (epsilon) for differential privacy
             k_anonymity: Minimum k-anonymity level (each group must have at least k records)
             
         Returns:
@@ -452,13 +449,28 @@ class DataSubsettingManager:
             logger.info(f"Applied k-anonymity with k={k_anonymity}")
         
         # Add differential privacy noise to numeric columns
+        # Implementation follows the Laplace mechanism for differential privacy:
+        # - Sensitivity (Δf): maximum change in output when one record is modified
+        # - Noise scale: sensitivity / epsilon, where epsilon is the privacy parameter
+        # - Smaller epsilon = stronger privacy but more noise
         numeric_cols = data.select_dtypes(include=[np.number]).columns
         
         for col in numeric_cols:
             if noise_level > 0:
-                # Add Laplace noise for differential privacy
-                sensitivity = data[col].std()  # Simplified sensitivity calculation
-                scale = sensitivity / (noise_level * len(data))
+                # Calculate true sensitivity: maximum change when one record is added/removed
+                # For bounded data, sensitivity is the range; for unbounded, use a reasonable bound
+                col_min = data[col].min()
+                col_max = data[col].max()
+                col_range = col_max - col_min
+                
+                # True sensitivity: maximum possible change in any single value
+                # For individual data points, sensitivity equals the range of possible values
+                sensitivity = col_range if col_range > 0 else 1.0
+                
+                # Correct Laplace scale: sensitivity / epsilon (noise_level is our epsilon)
+                # This ensures (epsilon, 0)-differential privacy
+                epsilon = noise_level
+                scale = sensitivity / epsilon
                 noise = np.random.laplace(0, scale, size=len(data))
                 data[col] = data[col] + noise
         
@@ -619,8 +631,7 @@ class DataSubsettingManager:
         """Load a data subset by ID."""
         if subset_id in self.subsets_registry:
             subset = self.subsets_registry[subset_id]
-            with open(subset.data_path, 'rb') as f:
-                return pickle.load(f)
+            return pd.read_parquet(subset.data_path)
         return None
     
     def get_subset_metadata(self, subset_id: str) -> Optional[DataSubset]:
@@ -677,7 +688,7 @@ class DataSubsettingManager:
                                        data: pd.DataFrame,
                                        sample_size: int,
                                        privacy_budget: float = 1.0,
-                                       noise_scale: float = 0.1,
+                                       epsilon: float = 0.1,
                                        k_anonymity: int = 5) -> pd.DataFrame:
         """
         Create a privacy-preserving sample with differential privacy and k-anonymity.
@@ -685,8 +696,8 @@ class DataSubsettingManager:
         Args:
             data: Input DataFrame
             sample_size: Desired sample size
-            privacy_budget: Privacy budget for differential privacy
-            noise_scale: Scale of noise to add
+            privacy_budget: Total privacy budget (not currently used)
+            epsilon: Privacy parameter (epsilon) for differential privacy
             k_anonymity: Minimum k-anonymity level
             
         Returns:
@@ -699,7 +710,7 @@ class DataSubsettingManager:
         private_sample = self.apply_privacy_preserving_sampling(
             data=data,
             sample_fraction=sample_fraction,
-            noise_level=noise_scale,
+            noise_level=epsilon,
             k_anonymity=k_anonymity
         )
         
@@ -741,10 +752,20 @@ class DataSubsettingManager:
         return train_data, val_data
     
     def _calculate_data_hash(self, data: pd.DataFrame) -> str:
-        """Calculate a hash signature for the data."""
-        # Create a deterministic string representation
-        data_str = data.to_string(index=False)
-        return hashlib.sha256(data_str.encode()).hexdigest()[:16]
+        """
+        Calculate a memory-efficient hash signature for the data.
+        
+        Uses pandas' built-in hashing for better performance with large datasets.
+        """
+        # Calculate hash for each row using pandas built-in hashing
+        # This is memory-efficient as it processes data row by row
+        row_hashes = hash_pandas_object(data, index=False, encoding='utf8')
+        
+        # Combine all row hashes into a single deterministic hash
+        # Use the hash of the array of hashes for final result
+        combined_hash = hashlib.sha256(row_hashes.values.tobytes()).hexdigest()
+        
+        return combined_hash[:16]
     
     def _calculate_quality_score(self, 
                                 statistics: Dict[str, Any], 

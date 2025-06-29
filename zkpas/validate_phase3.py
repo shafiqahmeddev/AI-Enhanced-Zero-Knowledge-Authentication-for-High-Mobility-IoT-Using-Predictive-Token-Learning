@@ -102,7 +102,9 @@ class EventBus:
             await self._event_queue.put(event)
             self._metrics["events_published"] += 1
         except asyncio.QueueFull:
-            pass
+            print(f"Warning: Event queue full, dropping event: {event_type.name}")
+        except Exception as e:
+            print(f"Error publishing event {event_type.name}: {e}")
     
     async def _process_events(self):
         while self._running:
@@ -112,8 +114,11 @@ class EventBus:
                 self._metrics["events_processed"] += 1
             except asyncio.TimeoutError:
                 continue
-            except Exception:
-                pass
+            except asyncio.CancelledError:
+                print("Event processing cancelled")
+                break
+            except Exception as e:
+                print(f"Error processing event: {e}")
     
     async def _handle_event(self, event):
         if event.event_type not in self._subscribers:
@@ -123,13 +128,13 @@ class EventBus:
             try:
                 task = asyncio.create_task(handler(event))
                 tasks.append(task)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Error creating task for event handler: {e}")
         if tasks:
             try:
                 await asyncio.gather(*tasks, return_exceptions=True)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Error executing event handlers: {e}")
     
     def get_metrics(self):
         return self._metrics.copy()

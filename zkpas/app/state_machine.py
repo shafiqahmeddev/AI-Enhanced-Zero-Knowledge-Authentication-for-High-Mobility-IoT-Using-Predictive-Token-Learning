@@ -6,6 +6,7 @@ defined in docs/state_machine.md, ensuring verifiable logic and preventing bugs.
 """
 
 import asyncio
+import inspect
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -183,7 +184,15 @@ class StateMachine(ABC):
         # Execute transition action
         if transition.action:
             try:
-                transition.action(event)
+                # Check if action is a coroutine function and handle accordingly
+                if inspect.iscoroutinefunction(transition.action):
+                    await transition.action(event)
+                else:
+                    # Call synchronous action normally
+                    result = transition.action(event)
+                    # If the result is a coroutine (action returned a coroutine), await it
+                    if inspect.iscoroutine(result):
+                        await result
             except Exception as e:
                 logger.error(
                     f"Error executing transition action: {e}",
@@ -330,8 +339,8 @@ class StateMachine(ABC):
         
         # Add transitions
         for from_state, transitions in self.transitions.items():
-            for event_type, to_state in transitions.items():
-                lines.append(f"    {from_state.name} --> {to_state.name} : {event_type.name}")
+            for event_type, transition in transitions.items():
+                lines.append(f"    {from_state.name} --> {transition.to_state.name} : {event_type.name}")
         
         return "\n".join(lines)
 

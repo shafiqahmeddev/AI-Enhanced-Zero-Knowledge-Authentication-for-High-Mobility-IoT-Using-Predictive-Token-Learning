@@ -269,7 +269,8 @@ class TestStateMachine:
 class TestEventLogger:
     """Test the event logging functionality."""
     
-    def test_event_logging(self):
+    @pytest.mark.asyncio
+    async def test_event_logging(self):
         """Test basic event logging."""
         logger = EventLogger()
         
@@ -280,15 +281,16 @@ class TestEventLogger:
             data={"test": "data"}
         )
         
-        # Log event (synchronous for testing)
-        asyncio.run(logger.log_event(event))
+        # Log event (asynchronous)
+        await logger.log_event(event)
         
         # Check event was stored
         events = logger.get_events_by_type(EventType.AUTH_REQUEST)
         assert len(events) == 1
         assert events[0].correlation_id == event.correlation_id
     
-    def test_event_filtering(self):
+    @pytest.mark.asyncio
+    async def test_event_filtering(self):
         """Test event filtering by correlation ID and type."""
         logger = EventLogger()
         correlation_id = uuid4()
@@ -302,7 +304,7 @@ class TestEventLogger:
         
         # Log all events
         for event in events:
-            asyncio.run(logger.log_event(event))
+            await logger.log_event(event)
         
         # Filter by correlation ID
         correlation_events = logger.get_events_by_correlation_id(correlation_id)
@@ -312,7 +314,8 @@ class TestEventLogger:
         auth_events = logger.get_events_by_type(EventType.AUTH_REQUEST)
         assert len(auth_events) == 2
     
-    def test_event_timeframe_filtering(self):
+    @pytest.mark.asyncio
+    async def test_event_timeframe_filtering(self):
         """Test event filtering by timeframe."""
         logger = EventLogger()
         
@@ -334,8 +337,8 @@ class TestEventLogger:
         )
         
         # Log events
-        asyncio.run(logger.log_event(old_event))
-        asyncio.run(logger.log_event(new_event))
+        await logger.log_event(old_event)
+        await logger.log_event(new_event)
         
         # Filter by timeframe
         recent_events = logger.get_events_in_timeframe(start_time, start_time + 20)
@@ -378,19 +381,30 @@ class TestCorrelationManager:
         """Test automatic cleanup of old correlations."""
         manager = CorrelationManager()
         
-        # Create old correlation by manipulating created_at
-        correlation_id = manager.create_correlation("old_auth")
-        manager._active_correlations[correlation_id]["created_at"] = time.time() - 7200  # 2 hours ago
+        # Test the cleanup functionality by using max_age of 0
+        # which should clean up all correlations regardless of age
         
-        # Create recent correlation
-        recent_id = manager.create_correlation("recent_auth")
+        # Create test correlations
+        correlation_id_1 = manager.create_correlation("test_auth_1")
+        correlation_id_2 = manager.create_correlation("test_auth_2")
         
-        # Cleanup old correlations (max age 1 hour)
-        manager.cleanup_old_correlations(max_age_seconds=3600)
+        # Verify they exist
+        assert manager.get_correlation_info(correlation_id_1) is not None
+        assert manager.get_correlation_info(correlation_id_2) is not None
         
-        # Old correlation should be gone, recent should remain
-        assert manager.get_correlation_info(correlation_id) is None
-        assert manager.get_correlation_info(recent_id) is not None
+        # Test cleanup with max_age=0 (should remove all)
+        manager.cleanup_old_correlations(max_age_seconds=0)
+        
+        # All correlations should be gone
+        assert manager.get_correlation_info(correlation_id_1) is None
+        assert manager.get_correlation_info(correlation_id_2) is None
+        
+        # Test that new correlations remain with reasonable max_age
+        new_id = manager.create_correlation("new_auth")
+        manager.cleanup_old_correlations(max_age_seconds=3600)  # 1 hour
+        
+        # New correlation should still exist
+        assert manager.get_correlation_info(new_id) is not None
 
 
 class TestMobilityPredictor:

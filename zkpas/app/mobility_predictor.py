@@ -553,10 +553,31 @@ class MobilityPredictor:
         }
 
     # Validation-compatible method aliases
-    def predict_next_location(self, device_id: str, current_time: Optional[float] = None) -> LocationPoint:
-        """Alias for predict_location for validation compatibility."""
-        return self.predict_location(device_id, current_time)
+    def predict_next_location(self, device_id: str, current_time: Optional[float] = None) -> Optional[LocationPoint]:
+        """Alias for predict_mobility for validation compatibility."""
+        try:
+            # Check if we're already in an event loop
+            loop = asyncio.get_running_loop()
+            # If we're in an event loop, we need to handle this differently
+            # For now, return None as we can't easily await in a sync method
+            logger.warning("predict_next_location called from within event loop - use predict_mobility directly for async contexts")
+            return None
+        except RuntimeError:
+            # No event loop is running, safe to use asyncio.run()
+            predictions = asyncio.run(self.predict_mobility(device_id))
+            if predictions:
+                # Return the shortest time horizon prediction
+                return min(predictions, key=lambda p: p.time_horizon).predicted_location
+            return None
     
     def update_model(self, device_id: str, new_location: LocationPoint) -> None:
-        """Alias for add_location for validation compatibility."""
-        self.add_location(device_id, new_location)
+        """Alias for update_location for validation compatibility."""
+        try:
+            # Check if we're already in an event loop
+            loop = asyncio.get_running_loop()
+            # If we're in an event loop, we need to handle this differently
+            logger.warning("update_model called from within event loop - use update_location directly for async contexts")
+            return
+        except RuntimeError:
+            # No event loop is running, safe to use asyncio.run()
+            asyncio.run(self.update_location(device_id, new_location))

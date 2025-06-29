@@ -12,6 +12,7 @@ import time
 from typing import Dict, Optional, Set, Tuple
 from loguru import logger
 from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import serialization
 
 from app.components.interfaces import (
     IGatewayNode,
@@ -216,8 +217,33 @@ class GatewayNode(IGatewayNode):
         
         # Verify ZKP
         try:
-            # In real implementation, this would be actual cryptographic verification
-            is_valid = zkp_data is not None and zkp_data.get("valid", False)
+            # Actual cryptographic verification using verify_zkp function
+            if (zkp_data is not None and 
+                session.commitment is not None and 
+                session.challenge is not None and 
+                session.device_public_key is not None):
+                
+                # Extract ZKP response from the event data
+                zkp_response_hex = zkp_data.get("response")
+                if zkp_response_hex:
+                    zkp_response = bytes.fromhex(zkp_response_hex)
+                    
+                    # Deserialize device public key for verification
+                    device_pub_key = serialization.load_der_public_key(session.device_public_key)
+                    
+                    # Perform actual cryptographic ZKP verification
+                    is_valid = verify_zkp(
+                        commitment=session.commitment,
+                        challenge=session.challenge,
+                        response=zkp_response,
+                        public_key=device_pub_key
+                    )
+                else:
+                    logger.warning(f"Missing ZKP response in data", extra={"correlation_id": correlation_id_str})
+                    is_valid = False
+            else:
+                logger.warning(f"Missing required ZKP verification data", extra={"correlation_id": correlation_id_str})
+                is_valid = False
             
             if is_valid:
                 # Authentication successful
@@ -249,6 +275,16 @@ class GatewayNode(IGatewayNode):
                     source=self._gateway_id,
                     data={"device_id": device_id, "reason": "Invalid ZKP"}
                 )
+        
+        except CryptoError as e:
+            logger.error(f"Cryptographic error verifying ZKP: {e}", extra={"correlation_id": correlation_id_str})
+            
+            await self._event_bus.publish_event(
+                event_type=EventType.CRYPTO_FAILURE,
+                correlation_id=event.correlation_id,
+                source=self._gateway_id,
+                data={"error": f"Crypto error: {str(e)}", "device_id": device_id}
+            )
         
         except Exception as e:
             logger.error(f"Error verifying ZKP: {e}", extra={"correlation_id": correlation_id_str})

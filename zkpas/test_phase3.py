@@ -9,10 +9,12 @@ implementation without requiring external test frameworks.
 import asyncio
 import sys
 import time
+from pathlib import Path
 from uuid import uuid4
 
 # Add the project root to Python path
-sys.path.insert(0, '/Users/shafiqahmed/Downloads/AI Enhanced Zero Knowledge Authentication for High Mobility IoT Using Predictive Token Learning/zkpas')
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
 from app.events import Event, EventBus, EventType, event_logger, correlation_manager
 from app.state_machine import GatewayStateMachine, DeviceStateMachine, StateType
