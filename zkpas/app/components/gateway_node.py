@@ -1,8 +1,9 @@
 """
-Gateway Node Implementation with Degraded Mode Support
+Gateway Node Implementation with Event-Driven Architecture and Degraded Mode Support
 
 The Gateway Node handles device authentication and provides graceful
-degradation when the Trusted Authority becomes unavailable.
+degradation when the Trusted Authority becomes unavailable. Now enhanced
+with formal state machine and async event processing.
 """
 
 import asyncio
@@ -18,6 +19,8 @@ from app.components.interfaces import (
     ProtocolMessage,
     AuthenticationResult
 )
+from app.events import Event, EventBus, EventType, correlation_manager
+from app.state_machine import GatewayStateMachine, StateType
 from shared.config import ProtocolState, MessageType, CryptoConfig
 from shared.crypto_utils import (
     generate_ecc_keypair,
@@ -60,28 +63,37 @@ class SlidingWindowToken:
 
 class GatewayNode(IGatewayNode):
     """
-    Implementation of the Gateway Node with graceful degradation support.
+    Implementation of the Gateway Node with event-driven architecture and graceful degradation support.
     
     Features:
-    - Zero-knowledge proof verification
+    - Zero-knowledge proof verification with formal state machine
     - Sliding window token validation
     - Degraded mode operation when TA is unavailable
-    - Comprehensive audit logging
+    - Async event-driven communication
+    - Comprehensive audit logging with correlation IDs
     """
     
-    def __init__(self, gateway_id: str, trusted_authority: ITrustedAuthority):
+    def __init__(self, gateway_id: str, trusted_authority: ITrustedAuthority, event_bus: EventBus):
         """
         Initialize the Gateway Node.
         
         Args:
             gateway_id: Unique identifier for this gateway
             trusted_authority: Reference to the trusted authority
+            event_bus: Event bus for async communication
         """
         self._gateway_id = gateway_id
         self._trusted_authority = trusted_authority
+        self._event_bus = event_bus
         self._private_key, self._public_key = generate_ecc_keypair()
         
-        # Protocol state management
+        # State machine for formal protocol verification
+        self._state_machine = GatewayStateMachine(
+            component_id=gateway_id,
+            event_bus=event_bus
+        )
+        
+        # Protocol state management (legacy, will migrate to state machine)
         self._state = ProtocolState.IDLE
         self._is_degraded_mode = False
         self._degraded_reason = ""
@@ -98,10 +110,218 @@ class GatewayNode(IGatewayNode):
         self._auth_cache: Dict[str, Tuple[bytes, float]] = {}  # device_id -> (pub_key, timestamp)
         self._cache_ttl = 3600  # 1 hour
         
+        # Subscribe to relevant events
+        self._setup_event_handlers()
+        
         logger.info(
-            f"Gateway Node {gateway_id} initialized",
+            f"Gateway Node {gateway_id} initialized with event-driven architecture",
             extra={"correlation_id": "GW_INIT"}
         )
+    
+    def _setup_event_handlers(self) -> None:
+        """Setup event handlers for gateway-specific events."""
+        # Subscribe to authentication-related events
+        self._event_bus.subscribe(EventType.AUTH_REQUEST, self._handle_auth_request)
+        self._event_bus.subscribe(EventType.COMMITMENT_GENERATED, self._handle_commitment)
+        self._event_bus.subscribe(EventType.ZKP_COMPUTED, self._handle_zkp_response)
+        self._event_bus.subscribe(EventType.NETWORK_FAILURE, self._handle_network_failure)
+        self._event_bus.subscribe(EventType.NETWORK_RESTORED, self._handle_network_restored)
+        self._event_bus.subscribe(EventType.TIMEOUT_EXPIRED, self._handle_timeout)
+        
+        # Let state machine handle events
+        self._event_bus.subscribe(EventType.AUTH_REQUEST, self._state_machine.handle_event)
+        self._event_bus.subscribe(EventType.COMMITMENT_GENERATED, self._state_machine.handle_event)
+        self._event_bus.subscribe(EventType.VERIFICATION_COMPLETE, self._state_machine.handle_event)
+        self._event_bus.subscribe(EventType.SESSION_EXPIRED, self._state_machine.handle_event)
+        self._event_bus.subscribe(EventType.NETWORK_FAILURE, self._state_machine.handle_event)
+        self._event_bus.subscribe(EventType.NETWORK_RESTORED, self._state_machine.handle_event)
+    
+    async def _handle_auth_request(self, event: Event) -> None:
+        """Handle authentication request event."""
+        device_id = event.data.get("device_id")
+        if not device_id:
+            logger.error("Auth request missing device_id", extra={"correlation_id": str(event.correlation_id)})
+            return
+        
+        logger.info(
+            f"Gateway handling auth request for device {device_id}",
+            extra={"correlation_id": str(event.correlation_id)}
+        )
+        
+        # Delegate to traditional authenticate_device method
+        try:
+            result = await self.authenticate_device(device_id)
+            
+            # Publish result event
+            await self._event_bus.publish_event(
+                event_type=EventType.VERIFICATION_COMPLETE if result.success else EventType.INVALID_PROOF,
+                correlation_id=event.correlation_id,
+                source=self._gateway_id,
+                data={
+                    "device_id": device_id,
+                    "success": result.success,
+                    "session_id": result.session_id,
+                    "error_message": result.error_message
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error handling auth request: {e}", extra={"correlation_id": str(event.correlation_id)})
+            
+            await self._event_bus.publish_event(
+                event_type=EventType.PROTOCOL_VIOLATION,
+                correlation_id=event.correlation_id,
+                source=self._gateway_id,
+                data={"error": str(e), "device_id": device_id}
+            )
+    
+    async def _handle_commitment(self, event: Event) -> None:
+        """Handle commitment received event."""
+        correlation_id_str = str(event.correlation_id)
+        commitment = event.data.get("commitment")
+        device_id = event.data.get("device_id")
+        
+        if correlation_id_str in self._active_sessions:
+            session = self._active_sessions[correlation_id_str]
+            session.commitment = commitment
+            
+            # Generate and send challenge
+            challenge = generate_challenge()
+            session.challenge = challenge
+            
+            logger.info(
+                f"Gateway generated challenge for device {device_id}",
+                extra={"correlation_id": correlation_id_str}
+            )
+            
+            # Publish challenge event
+            await self._event_bus.publish_event(
+                event_type=EventType.CHALLENGE_CREATED,
+                correlation_id=event.correlation_id,
+                source=self._gateway_id,
+                target=device_id,
+                data={"challenge": challenge.hex()}
+            )
+    
+    async def _handle_zkp_response(self, event: Event) -> None:
+        """Handle ZKP response event."""
+        correlation_id_str = str(event.correlation_id)
+        zkp_data = event.data.get("zkp")
+        device_id = event.data.get("device_id")
+        
+        if correlation_id_str not in self._active_sessions:
+            logger.warning(f"No active session for ZKP response", extra={"correlation_id": correlation_id_str})
+            return
+        
+        session = self._active_sessions[correlation_id_str]
+        
+        # Verify ZKP
+        try:
+            # In real implementation, this would be actual cryptographic verification
+            is_valid = zkp_data is not None and zkp_data.get("valid", False)
+            
+            if is_valid:
+                # Authentication successful
+                session_id = str(uuid.uuid4())
+                session.session_key = derive_key(b"session_key_material")
+                self._authenticated_devices.add(device_id)
+                
+                logger.info(
+                    f"Gateway verified ZKP for device {device_id}, session {session_id}",
+                    extra={"correlation_id": correlation_id_str}
+                )
+                
+                await self._event_bus.publish_event(
+                    event_type=EventType.SESSION_ESTABLISHED,
+                    correlation_id=event.correlation_id,
+                    source=self._gateway_id,
+                    target=device_id,
+                    data={"session_id": session_id, "device_id": device_id}
+                )
+            else:
+                logger.warning(
+                    f"Invalid ZKP from device {device_id}",
+                    extra={"correlation_id": correlation_id_str}
+                )
+                
+                await self._event_bus.publish_event(
+                    event_type=EventType.INVALID_PROOF,
+                    correlation_id=event.correlation_id,
+                    source=self._gateway_id,
+                    data={"device_id": device_id, "reason": "Invalid ZKP"}
+                )
+        
+        except Exception as e:
+            logger.error(f"Error verifying ZKP: {e}", extra={"correlation_id": correlation_id_str})
+            
+            await self._event_bus.publish_event(
+                event_type=EventType.CRYPTO_FAILURE,
+                correlation_id=event.correlation_id,
+                source=self._gateway_id,
+                data={"error": str(e), "device_id": device_id}
+            )
+    
+    async def _handle_network_failure(self, event: Event) -> None:
+        """Handle network failure event."""
+        reason = event.data.get("reason", "Unknown network failure")
+        
+        if not self._is_degraded_mode:
+            self._is_degraded_mode = True
+            self._degraded_reason = reason
+            
+            logger.warning(
+                f"Gateway entering degraded mode: {reason}",
+                extra={"correlation_id": str(event.correlation_id)}
+            )
+            
+            await self._event_bus.publish_event(
+                event_type=EventType.DEGRADED_MODE_ENTERED,
+                correlation_id=event.correlation_id,
+                source=self._gateway_id,
+                data={"reason": reason}
+            )
+    
+    async def _handle_network_restored(self, event: Event) -> None:
+        """Handle network restored event."""
+        if self._is_degraded_mode:
+            self._is_degraded_mode = False
+            self._degraded_reason = ""
+            
+            logger.info(
+                "Gateway exiting degraded mode, network restored",
+                extra={"correlation_id": str(event.correlation_id)}
+            )
+            
+            await self._event_bus.publish_event(
+                event_type=EventType.DEGRADED_MODE_EXITED,
+                correlation_id=event.correlation_id,
+                source=self._gateway_id,
+                data={}
+            )
+    
+    async def _handle_timeout(self, event: Event) -> None:
+        """Handle timeout event."""
+        timed_out_state = event.data.get("timed_out_state")
+        correlation_id_str = str(event.correlation_id)
+        
+        # Clean up session if it exists
+        if correlation_id_str in self._active_sessions:
+            session = self._active_sessions[correlation_id_str]
+            device_id = session.device_id
+            
+            logger.warning(
+                f"Authentication timeout for device {device_id} in state {timed_out_state}",
+                extra={"correlation_id": correlation_id_str}
+            )
+            
+            # Clean up session
+            del self._active_sessions[correlation_id_str]
+            
+            await self._event_bus.publish_event(
+                event_type=EventType.SESSION_EXPIRED,
+                correlation_id=event.correlation_id,
+                source=self._gateway_id,
+                data={"device_id": device_id, "reason": "timeout"}
+            )
     
     @property
     def entity_id(self) -> str:
@@ -125,7 +345,7 @@ class GatewayNode(IGatewayNode):
     
     async def authenticate_device(self, device_id: str) -> AuthenticationResult:
         """
-        Authenticate an IoT device using zero-knowledge proofs.
+        Authenticate an IoT device using zero-knowledge proofs with event-driven flow.
         
         Args:
             device_id: Device to authenticate
@@ -133,30 +353,48 @@ class GatewayNode(IGatewayNode):
         Returns:
             Authentication result
         """
-        correlation_id = str(uuid.uuid4())
+        # Create correlation ID for this authentication flow
+        correlation_id = correlation_manager.create_correlation(
+            context=f"device_auth_{device_id}",
+            metadata={"device_id": device_id, "gateway_id": self._gateway_id}
+        )
+        
         start_time = time.time()
         
         try:
             # Check if TA is available for full authentication
             if not self._trusted_authority.is_available():
                 await self._check_degraded_mode()
-                return await self._authenticate_device_degraded(device_id, correlation_id)
+                return await self._authenticate_device_degraded(device_id, str(correlation_id))
             
             # Create new authentication session
-            session = AuthenticationSession(device_id, correlation_id)
-            self._active_sessions[correlation_id] = session
+            session = AuthenticationSession(device_id, str(correlation_id))
+            self._active_sessions[str(correlation_id)] = session
             
             logger.info(
-                f"Starting authentication for device {device_id}",
-                extra={"correlation_id": correlation_id}
+                f"Starting event-driven authentication for device {device_id}",
+                extra={"correlation_id": str(correlation_id)}
             )
             
-            # Request device verification from TA
+            # Publish authentication request event to start the flow
+            await self._event_bus.publish_event(
+                event_type=EventType.AUTH_REQUEST,
+                correlation_id=correlation_id,
+                source=self._gateway_id,
+                target=device_id,
+                data={
+                    "device_id": device_id,
+                    "gateway_id": self._gateway_id,
+                    "challenge": generate_challenge().hex()
+                }
+            )
+            
+            # Request device verification from TA (traditional flow for now)
             auth_request = ProtocolMessage(
                 message_type=MessageType.AUTHENTICATION_REQUEST,
                 sender_id=self._gateway_id,
                 recipient_id=self._trusted_authority.entity_id,
-                correlation_id=correlation_id,
+                correlation_id=str(correlation_id),
                 timestamp=start_time,
                 payload={"device_id": device_id}
             )
