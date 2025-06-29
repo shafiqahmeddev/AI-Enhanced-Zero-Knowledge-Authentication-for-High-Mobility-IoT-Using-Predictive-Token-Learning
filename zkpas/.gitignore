@@ -1,0 +1,158 @@
+# ZKPAS Project .gitignore
+# Focused on Python development and simulation artifacts
+
+# =============================================================================
+# SENSITIVE FILES AND CREDENTIALS
+# =============================================================================
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.staging
+*.env
+!.env.example
+
+# Keys and certificates
+*.key
+*.pem
+*.crt
+*.cert
+keys/
+certificates/
+secrets/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/production/
+data/sensitive/
+
+# =============================================================================
+# PYTHON DEVELOPMENT
+# =============================================================================
+
+# Virtual environment
+venv/
+.venv/
+env/
+ENV/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing and coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.cache
+.hypothesis/
+coverage.xml
+*.cover
+
+# =============================================================================
+# SIMULATION AND OUTPUT DATA
+# =============================================================================
+
+# Simulation results
+results/
+output/
+logs/
+*.log
+*.out
+
+# Large data files
+data/raw/
+data/processed/
+data/large/
+*.csv
+*.json
+*.parquet
+*.feather
+
+# Model files
+models/
+checkpoints/
+*.pkl
+*.pickle
+*.h5
+*.model
+*.weights
+
+# =============================================================================
+# DEVELOPMENT TOOLS
+# =============================================================================
+
+# IDE files
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# System files
+.DS_Store
+Thumbs.db
+*~
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# =============================================================================
+# DOCUMENTATION BUILD
+# =============================================================================
+
+# Built documentation
+docs/_build/
+docs/build/
+site/
+
+# =============================================================================
+# PERFORMANCE AND PROFILING
+# =============================================================================
+
+# Profiling results
+*.prof
+*.cprof
+profile_results/
+
+# Performance logs
+perf.data
+perf.data.old
+
+# =============================================================================
+# SECURITY TOOLS
+# =============================================================================
+
+# Security scan results
+.bandit
+.safety
+security-reports/
+
+# =============================================================================
+# ALLOW IMPORTANT FILES
+# =============================================================================
+
+# Keep essential configuration
+!.env.example
+!pyproject.toml
+!requirements.txt
+!requirements.in
+
+# Keep documentation
+!docs/*.md
+!adr/*.md
