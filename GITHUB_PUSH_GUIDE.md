@@ -33,8 +33,8 @@ Your repository is ready to be pushed to GitHub! Follow these steps:
 # Navigate to your project directory
 cd "/Users/shafiqahmed/Downloads/AI Enhanced Zero Knowledge Authentication for High Mobility IoT Using Predictive Token Learning"
 
-# Add GitHub remote (replace 'yourusername' with your GitHub username)
-git remote add origin https://github.com/yourusername/zkpas-iot-auth.git
+# Add GitHub remote
+git remote add origin https://github.com/shafiqahmeddev/AI-Enhanced-Zero-Knowledge-Authentication-for-High-Mobility-IoT-Using-Predictive-Token-Learning.git
 
 # Verify the remote
 git remote -v
@@ -93,7 +93,7 @@ git push -u origin main
 
 ```bash
 # 1. Add GitHub remote
-git remote add origin https://github.com/yourusername/zkpas-iot-auth.git
+git remote add origin https://github.com/shafiqahmeddev/AI-Enhanced-Zero-Knowledge-Authentication-for-High-Mobility-IoT-Using-Predictive-Token-Learning.git
 
 # 2. Push to GitHub
 git push -u origin main
@@ -154,9 +154,9 @@ git remote set-url origin https://github.com/yourusername/new-repo-name.git
 ## 🎉 Success Indicators
 
 When successfully uploaded, you should see:
-- ✅ Repository accessible at `https://github.com/yourusername/zkpas-iot-auth`
+- ✅ Repository accessible at `https://github.com/shafiqahmeddev/AI-Enhanced-Zero-Knowledge-Authentication-for-High-Mobility-IoT-Using-Predictive-Token-Learning`
 - ✅ README.md displayed as homepage
-- ✅ All 29 files visible in repository
+- ✅ All 32 files visible in repository
 - ✅ Green "Latest commit" indicator
 - ✅ Repository size showing ~550KB
 
