@@ -435,16 +435,21 @@ class DataSubsettingManager:
             data: Input DataFrame
             sample_fraction: Fraction of data to sample
             noise_level: Level of differential privacy noise to add
-            k_anonymity: Minimum k-anonymity level
+            k_anonymity: Minimum k-anonymity level (each group must have at least k records)
             
         Returns:
             Privacy-preserved DataFrame
         """
-        logger.info(f"Applying privacy-preserving sampling: fraction={sample_fraction}, noise={noise_level}")
+        logger.info(f"Applying privacy-preserving sampling: fraction={sample_fraction}, noise={noise_level}, k-anonymity={k_anonymity}")
         
         # Random sampling for basic privacy
         if sample_fraction < 1.0:
             data = data.sample(frac=sample_fraction, random_state=self.random_seed)
+        
+        # Apply k-anonymity by identifying quasi-identifiers and ensuring group sizes
+        if k_anonymity > 1:
+            data = self._apply_k_anonymity(data, k_anonymity)
+            logger.info(f"Applied k-anonymity with k={k_anonymity}")
         
         # Add differential privacy noise to numeric columns
         numeric_cols = data.select_dtypes(include=[np.number]).columns
@@ -459,6 +464,156 @@ class DataSubsettingManager:
         
         logger.info(f"Applied privacy preservation to {len(numeric_cols)} numeric columns")
         return data
+    
+    def _apply_k_anonymity(self, data: pd.DataFrame, k: int) -> pd.DataFrame:
+        """
+        Apply k-anonymity by ensuring each group has at least k records.
+        
+        Args:
+            data: Input DataFrame
+            k: Minimum group size for k-anonymity
+            
+        Returns:
+            DataFrame with k-anonymity applied
+        """
+        if k <= 1:
+            return data
+        
+        # Identify potential quasi-identifiers (categorical and discretized numeric columns)
+        categorical_cols = data.select_dtypes(include=['object', 'category']).columns.tolist()
+        
+        # For numeric columns, create bins to treat as quasi-identifiers
+        numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
+        binned_data = data.copy()
+        
+        # Create bins for numeric columns (treating them as quasi-identifiers)
+        for col in numeric_cols:
+            if col in data.columns:
+                # Create 10 bins for each numeric column
+                try:
+                    binned_data[f"{col}_bin"] = pd.cut(data[col], bins=10, labels=False, duplicates='drop')
+                    categorical_cols.append(f"{col}_bin")
+                except Exception:
+                    # If binning fails (e.g., all values are the same), skip this column
+                    continue
+        
+        # Remove target columns and other non-quasi-identifier columns
+        # Assume columns with high cardinality are not quasi-identifiers
+        quasi_identifiers = []
+        for col in categorical_cols:
+            if col in binned_data.columns:
+                unique_ratio = binned_data[col].nunique() / len(binned_data)
+                # Only use columns with reasonable cardinality as quasi-identifiers
+                if unique_ratio < 0.5:  # Less than 50% unique values
+                    quasi_identifiers.append(col)
+        
+        if not quasi_identifiers:
+            # If no suitable quasi-identifiers found, return original data
+            logger.warning("No suitable quasi-identifiers found for k-anonymity")
+            return data
+        
+        logger.info(f"Applying k-anonymity with quasi-identifiers: {quasi_identifiers}")
+        
+        # Group by quasi-identifiers and check group sizes
+        grouped = binned_data.groupby(quasi_identifiers)
+        group_sizes = grouped.size()
+        
+        # Find groups that violate k-anonymity
+        small_groups = group_sizes[group_sizes < k]
+        
+        if len(small_groups) == 0:
+            # All groups already satisfy k-anonymity
+            return data
+        
+        logger.info(f"Found {len(small_groups)} groups with size < {k}")
+        
+        # Strategy 1: Remove records from small groups (suppression)
+        valid_groups = group_sizes[group_sizes >= k].index
+        
+        # Filter data to keep only records from valid groups
+        mask = pd.Series(False, index=binned_data.index)
+        for group_key in valid_groups:
+            if isinstance(group_key, tuple):
+                # Multiple quasi-identifiers
+                group_mask = pd.Series(True, index=binned_data.index)
+                for i, qi in enumerate(quasi_identifiers):
+                    group_mask &= (binned_data[qi] == group_key[i])
+            else:
+                # Single quasi-identifier
+                group_mask = (binned_data[quasi_identifiers[0]] == group_key)
+            
+            mask |= group_mask
+        
+        result_data = data[mask].copy()
+        
+        # Strategy 2: If too much data is lost, try generalization
+        data_loss_ratio = 1 - (len(result_data) / len(data))
+        
+        if data_loss_ratio > 0.3:  # If more than 30% data loss
+            logger.warning(f"High data loss ({data_loss_ratio:.2%}) due to k-anonymity. Applying generalization...")
+            result_data = self._apply_generalization_for_k_anonymity(data, quasi_identifiers, k)
+        
+        records_removed = len(data) - len(result_data)
+        logger.info(f"K-anonymity applied: removed {records_removed} records ({records_removed/len(data):.2%})")
+        
+        return result_data
+    
+    def _apply_generalization_for_k_anonymity(self, data: pd.DataFrame, 
+                                            quasi_identifiers: List[str], 
+                                            k: int) -> pd.DataFrame:
+        """
+        Apply generalization strategy for k-anonymity when suppression causes too much data loss.
+        
+        Args:
+            data: Input DataFrame
+            quasi_identifiers: List of quasi-identifier columns
+            k: Minimum group size
+            
+        Returns:
+            DataFrame with generalized quasi-identifiers
+        """
+        generalized_data = data.copy()
+        
+        # Simple generalization: combine small groups by relaxing constraints
+        for qi in quasi_identifiers:
+            if qi.endswith('_bin') and qi in generalized_data.columns:
+                # For binned numeric columns, use fewer bins
+                original_col = qi.replace('_bin', '')
+                if original_col in data.columns:
+                    try:
+                        # Use fewer bins (5 instead of 10) for more generalization
+                        generalized_data[qi] = pd.cut(data[original_col], bins=5, labels=False, duplicates='drop')
+                    except Exception:
+                        continue
+            elif qi in generalized_data.columns:
+                # For categorical columns, group rare categories as "Other"
+                value_counts = generalized_data[qi].value_counts()
+                rare_values = value_counts[value_counts < k].index
+                generalized_data.loc[generalized_data[qi].isin(rare_values), qi] = 'Other'
+        
+        # Check if generalization helped
+        grouped = generalized_data.groupby(quasi_identifiers)
+        group_sizes = grouped.size()
+        small_groups = group_sizes[group_sizes < k]
+        
+        if len(small_groups) > 0:
+            # If generalization didn't help enough, fall back to suppression
+            valid_groups = group_sizes[group_sizes >= k].index
+            mask = pd.Series(False, index=generalized_data.index)
+            
+            for group_key in valid_groups:
+                if isinstance(group_key, tuple):
+                    group_mask = pd.Series(True, index=generalized_data.index)
+                    for i, qi in enumerate(quasi_identifiers):
+                        group_mask &= (generalized_data[qi] == group_key[i])
+                else:
+                    group_mask = (generalized_data[quasi_identifiers[0]] == group_key)
+                
+                mask |= group_mask
+            
+            generalized_data = generalized_data[mask]
+        
+        return generalized_data
     
     def load_subset(self, subset_id: str) -> Optional[pd.DataFrame]:
         """Load a data subset by ID."""
@@ -475,6 +630,115 @@ class DataSubsettingManager:
     def list_subsets(self) -> List[DataSubset]:
         """List all available data subsets."""
         return list(self.subsets_registry.values())
+    
+    def create_stratified_sample(self,
+                               data: pd.DataFrame,
+                               target_column: str,
+                               sample_size: int,
+                               random_state: Optional[int] = None) -> pd.DataFrame:
+        """
+        Create a stratified sample maintaining target distribution.
+        
+        Args:
+            data: Input DataFrame
+            target_column: Column to stratify on
+            sample_size: Number of samples to create
+            random_state: Random state for reproducibility
+            
+        Returns:
+            Stratified sample DataFrame
+        """
+        if random_state is None:
+            random_state = self.random_seed
+            
+        # Calculate sample sizes for each stratum
+        target_dist = data[target_column].value_counts(normalize=True)
+        stratified_samples = []
+        
+        for target_value, proportion in target_dist.items():
+            stratum_data = data[data[target_column] == target_value]
+            stratum_sample_size = max(1, int(sample_size * proportion))
+            
+            if len(stratum_data) >= stratum_sample_size:
+                stratum_sample = stratum_data.sample(
+                    n=stratum_sample_size, 
+                    random_state=random_state
+                )
+            else:
+                stratum_sample = stratum_data
+            
+            stratified_samples.append(stratum_sample)
+        
+        result = pd.concat(stratified_samples, ignore_index=True)
+        logger.info(f"Created stratified sample of {len(result)} records from {len(data)} original records")
+        return result
+    
+    def create_privacy_preserving_sample(self,
+                                       data: pd.DataFrame,
+                                       sample_size: int,
+                                       privacy_budget: float = 1.0,
+                                       noise_scale: float = 0.1,
+                                       k_anonymity: int = 5) -> pd.DataFrame:
+        """
+        Create a privacy-preserving sample with differential privacy and k-anonymity.
+        
+        Args:
+            data: Input DataFrame
+            sample_size: Desired sample size
+            privacy_budget: Privacy budget for differential privacy
+            noise_scale: Scale of noise to add
+            k_anonymity: Minimum k-anonymity level
+            
+        Returns:
+            Privacy-preserving sample DataFrame
+        """
+        # Calculate sample fraction
+        sample_fraction = min(1.0, sample_size / len(data))
+        
+        # Apply privacy-preserving sampling
+        private_sample = self.apply_privacy_preserving_sampling(
+            data=data,
+            sample_fraction=sample_fraction,
+            noise_level=noise_scale,
+            k_anonymity=k_anonymity
+        )
+        
+        # If sample is still larger than desired, randomly sample
+        if len(private_sample) > sample_size:
+            private_sample = private_sample.sample(
+                n=sample_size, 
+                random_state=self.random_seed
+            )
+        
+        logger.info(f"Created privacy-preserving sample of {len(private_sample)} records")
+        return private_sample
+    
+    def create_train_validation_split(self,
+                                    data: pd.DataFrame,
+                                    validation_split: float = 0.2,
+                                    random_state: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Create train/validation split.
+        
+        Args:
+            data: Input DataFrame
+            validation_split: Proportion for validation set
+            random_state: Random state for reproducibility
+            
+        Returns:
+            Tuple of (train_data, validation_data)
+        """
+        if random_state is None:
+            random_state = self.random_seed
+            
+        train_data, val_data = train_test_split(
+            data,
+            test_size=validation_split,
+            random_state=random_state
+        )
+        
+        logger.info(f"Created train/validation split: {len(train_data)}/{len(val_data)} samples")
+        return train_data, val_data
     
     def _calculate_data_hash(self, data: pd.DataFrame) -> str:
         """Calculate a hash signature for the data."""
