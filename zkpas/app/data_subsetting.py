@@ -457,20 +457,21 @@ class DataSubsettingManager:
         
         for col in numeric_cols:
             if noise_level > 0:
-                # Calculate true sensitivity: maximum change when one record is added/removed
-                # For bounded data, sensitivity is the range; for unbounded, use a reasonable bound
+                # Calculate sensitivity as the data range (difference between max and min values)
+                # This represents the maximum possible change when one record is added/removed
                 col_min = data[col].min()
                 col_max = data[col].max()
                 col_range = col_max - col_min
                 
-                # True sensitivity: maximum possible change in any single value
-                # For individual data points, sensitivity equals the range of possible values
+                # Sensitivity equals the range of possible values for bounded data
                 sensitivity = col_range if col_range > 0 else 1.0
                 
-                # Correct Laplace scale: sensitivity / epsilon (noise_level is our epsilon)
+                # Standard Laplace mechanism: scale = sensitivity / epsilon
                 # This ensures (epsilon, 0)-differential privacy
                 epsilon = noise_level
                 scale = sensitivity / epsilon
+                
+                # Generate Laplace noise and add to data
                 noise = np.random.laplace(0, scale, size=len(data))
                 data[col] = data[col] + noise
         

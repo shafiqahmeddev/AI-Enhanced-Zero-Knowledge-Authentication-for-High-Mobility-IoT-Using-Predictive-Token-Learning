@@ -51,6 +51,48 @@ class EventType(Enum):
     COMPONENT_STOPPED = auto()
     DEGRADED_MODE_ENTERED = auto()
     DEGRADED_MODE_EXITED = auto()
+    
+    # Device events
+    DEVICE_REGISTERED = auto()
+    DEVICE_DEREGISTERED = auto()
+    DEVICE_AUTHENTICATED = auto()
+    DEVICE_AUTHENTICATION_FAILED = auto()
+    
+    # Gateway events
+    GATEWAY_REGISTERED = auto()
+    GATEWAY_DEREGISTERED = auto()
+    GATEWAY_AVAILABLE = auto()
+    GATEWAY_UNAVAILABLE = auto()
+    
+    # State machine events
+    STATE_TRANSITION = auto()
+    STATE_MACHINE_ERROR = auto()
+    INVALID_TRANSITION = auto()
+    TIMEOUT_STATE_CHANGE = auto()
+    
+    # Phase 5: Sliding Window Authentication events
+    WINDOW_CREATED = auto()
+    WINDOW_EXPIRED = auto()
+    TOKEN_GENERATED = auto()
+    TOKEN_VALIDATED = auto()
+    TOKEN_VALIDATION_REQUEST = auto()
+    TOKEN_VALIDATION_RESPONSE = auto()
+    TOKEN_EXPIRED = auto()
+    FALLBACK_MODE_ENABLED = auto()
+    FALLBACK_MODE_DISABLED = auto()
+    
+    # Phase 5: Byzantine Fault Tolerance events
+    CROSS_DOMAIN_AUTH_REQUEST = auto()
+    CROSS_DOMAIN_AUTH_SUCCESS = auto()
+    CROSS_DOMAIN_AUTH_FAILURE = auto()
+    SIGNATURE_SHARE_GENERATED = auto()
+    SIGNATURE_SHARE_VALIDATED = auto()
+    THRESHOLD_SIGNATURE_CREATED = auto()
+    BYZANTINE_FAULT_DETECTED = auto()
+    TRUST_ANCHOR_COMPROMISED = auto()
+    NETWORK_PARTITION_DETECTED = auto()
+    CONSENSUS_REACHED = auto()
+    CONSENSUS_FAILED = auto()
 
 
 @dataclass

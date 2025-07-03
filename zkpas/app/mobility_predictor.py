@@ -570,14 +570,6 @@ class MobilityPredictor:
                 return min(predictions, key=lambda p: p.time_horizon).predicted_location
             return None
     
-    def update_model(self, device_id: str, new_location: LocationPoint) -> None:
-        """Alias for update_location for validation compatibility."""
-        try:
-            # Check if we're already in an event loop
-            loop = asyncio.get_running_loop()
-            # If we're in an event loop, we need to handle this differently
-            logger.warning("update_model called from within event loop - use update_location directly for async contexts")
-            return
-        except RuntimeError:
-            # No event loop is running, safe to use asyncio.run()
-            asyncio.run(self.update_location(device_id, new_location))
+    async def update_model(self, device_id: str, new_location: LocationPoint) -> None:
+        """Async alias for update_location for validation compatibility."""
+        await self.update_location(device_id, new_location)

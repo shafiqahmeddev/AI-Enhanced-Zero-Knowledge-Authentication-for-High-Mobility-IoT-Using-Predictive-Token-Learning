@@ -347,3 +347,47 @@ def verify_proof(commitment: bytes, challenge: bytes, response: bytes, public_ke
 def hash_data(data: bytes) -> bytes:
     """Alias for secure_hash for validation compatibility."""
     return secure_hash(data)
+
+
+def sign_data(private_key: ec.EllipticCurvePrivateKey, data: bytes) -> bytes:
+    """
+    Sign data using ECC private key.
+    
+    Args:
+        private_key: ECC private key for signing
+        data: Data to sign
+        
+    Returns:
+        bytes: Digital signature
+    """
+    try:
+        from cryptography.hazmat.primitives import hashes
+        
+        signature = private_key.sign(data, ec.ECDSA(hashes.SHA256()))
+        return signature
+    except Exception as e:
+        raise CryptoError(f"Failed to sign data: {e}")
+
+
+def verify_signature(public_key: ec.EllipticCurvePublicKey, signature: bytes, data: bytes) -> bool:
+    """
+    Verify signature using ECC public key.
+    
+    Args:
+        public_key: ECC public key for verification
+        signature: Digital signature to verify
+        data: Original data that was signed
+        
+    Returns:
+        bool: True if signature is valid
+    """
+    try:
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.exceptions import InvalidSignature
+        
+        public_key.verify(signature, data, ec.ECDSA(hashes.SHA256()))
+        return True
+    except InvalidSignature:
+        return False
+    except Exception:
+        return False
