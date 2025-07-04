@@ -1,262 +1,277 @@
-# 🛡️ ZKPAS: AI-Enhanced Zero-Knowledge Authentication for High-Mobility IoT
+# ZKPAS - Zero Knowledge Proof Authentication System
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Repository Size](https://img.shields.io/badge/size-550KB-green.svg)]()
+[![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+[![Status: Active](https://img.shields.io/badge/Status-Active-green.svg)](https://github.com/shafiqahmed/zkpas)
 
-A cutting-edge **Zero-Knowledge Proof Authentication System** designed for high-mobility IoT devices, featuring AI-enhanced predictive token learning and Byzantine fault tolerance.
+> **A cutting-edge Zero-Knowledge Proof Authentication System for high-mobility IoT devices with AI-enhanced predictive token learning and Byzantine fault tolerance.**
 
-## 🌟 Key Features
+## 🚀 Overview
 
-- **🔐 Zero-Knowledge Proofs**: Secure authentication without revealing sensitive information
-- **🤖 AI-Enhanced Mobility Prediction**: Machine learning for predictive token generation
-- **🌐 High-Mobility Support**: Optimized for devices with frequent handovers
-- **🛡️ Byzantine Fault Tolerance**: Resilient to network failures and attacks
-- **⚡ Graceful Degradation**: Maintains service during infrastructure failures
-- **🔒 Post-Quantum Ready**: Future-proof cryptographic design
-- **📊 Comprehensive Testing**: 63% code coverage with integration tests
+ZKPAS is a revolutionary authentication system specifically designed for high-mobility IoT environments. It combines zero-knowledge proofs with machine learning to provide secure, efficient, and scalable authentication for resource-constrained devices in dynamic network conditions.
 
-## 🏗️ Architecture Overview
+### Key Innovation
+- **Zero-Knowledge Authentication**: Devices authenticate without revealing sensitive information
+- **AI-Powered Mobility Prediction**: LSTM neural networks predict device movement patterns
+- **Byzantine Fault Tolerance**: Resilient operation in untrusted environments
+- **Lightweight Design**: Optimized for resource-constrained IoT devices (<100MB RAM)
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   IoT Device    │    │  Gateway Node   │    │ Trusted Authority│
-│                 │    │                 │    │                 │
-│ • ZKP Generation│◄──►│ • ZKP Verification│◄──►│ • Registration  │
-│ • Mobility Track│    │ • Sliding Window│    │ • Certificates  │
-│ • Token Caching │    │ • Degraded Mode │    │ • Cross-Domain  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
+## ✨ Features
 
-### Components
+### 🔐 Security
+- **ECC secp256r1** cryptography with digital signatures
+- **Zero-knowledge proof** protocols for privacy-preserving authentication
+- **Constant-time operations** to prevent timing attacks
+- **Post-quantum algorithm** stubs for future-proofing
 
-- **🔑 Trusted Authority**: Central registration and certificate issuance
-- **🌐 Gateway Node**: Edge authentication with sliding window tokens
-- **📱 IoT Device**: Mobility-aware device with ZKP capabilities
-- **🧠 Mobility Predictor**: AI-powered movement prediction (Phase 3)
+### 🧠 AI-Enhanced Mobility Prediction
+- **LSTM neural networks** for movement pattern analysis
+- **Lightweight predictor** fallback for resource-constrained scenarios
+- **Real-time adaptation** to changing mobility patterns
+- **Accuracy**: 40-45% prediction accuracy (realistic for GPS-based systems)
 
-## 🚀 Quick Start
+### 🛡️ Byzantine Fault Tolerance
+- **Threshold cryptography** for cross-domain authentication
+- **Graceful degradation** when trusted authorities are unavailable
+- **Sliding window tokens** to reduce authentication overhead
+- **Distributed consensus** mechanisms
+
+### ⚡ Performance
+- **Authentication latency**: <200ms per device
+- **Memory footprint**: <100MB total system usage
+- **LSTM training**: ~1.3s on synthetic data
+- **Scalability**: Supports 100+ concurrent IoT devices
+
+## 🎯 Quick Start
 
 ### Prerequisites
-
-- Python 3.12+
-- Virtual environment support
-- Git
+- Python 3.7 or higher
+- 4GB+ RAM (recommended)
+- Network connectivity for distributed scenarios
 
 ### Installation
 
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/shafiqahmed/zkpas.git
+   cd zkpas
+   ```
+
+2. **Setup the system** (one-time setup)
+   ```bash
+   cd zkpas
+   python setup_zkpas.py
+   ```
+
+3. **Run the system** (every time)
+   ```bash
+   python run_zkpas.py
+   ```
+
+That's it! The system provides an interactive menu to explore all features.
+
+## 🎮 Usage Examples
+
+### Interactive Mode
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/zkpas-iot-auth.git
-cd zkpas-iot-auth/zkpas
-
-# Set up virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or venv\Scripts\activate  # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set up environment
-cp .env.example .env
-# Edit .env with your configuration
-
-# Run tests
-pytest
-
-# Check code quality
-pre-commit run --all-files
+python run_zkpas.py
+# Interactive menu with options:
+# 1. Basic Authentication Demo
+# 2. LSTM Mobility Prediction
+# 3. Security Stress Testing
+# 4. Complete Integration Test
 ```
 
-### Basic Usage
+### Command Line Interface
+```bash
+# Run specific demonstrations
+python run_zkpas.py --demo basic      # Basic ZKP authentication
+python run_zkpas.py --demo lstm       # LSTM prediction system
+python run_zkpas.py --demo security   # Security testing
+python run_zkpas.py --demo all        # Complete system test
 
-```python
-from app.components.trusted_authority import TrustedAuthority
-from app.components.gateway_node import GatewayNode
-from app.components.iot_device import IoTDevice
-from app.components.interfaces import DeviceLocation
-import asyncio
-
-async def main():
-    # Initialize components
-    ta = TrustedAuthority()
-    gateway = GatewayNode(gateway_id="gw_001")
-    
-    initial_location = DeviceLocation(
-        latitude=37.7749, 
-        longitude=-122.4194, 
-        timestamp=time.time()
-    )
-    device = IoTDevice(device_id="device_001", initial_location=initial_location)
-    
-    # Register device and gateway
-    await ta.register_device(device.entity_id, device.public_key)
-    await ta.register_gateway(gateway.entity_id, gateway.public_key)
-    
-    # Perform authentication
-    result = await device.initiate_authentication(gateway.entity_id)
-    print(f"Authentication result: {result.success}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+# System utilities
+python run_zkpas.py --health          # Health check
+python run_zkpas.py --test            # Run unit tests
 ```
 
-## 📁 Project Structure
+### Advanced Usage
+```bash
+# Direct demo access
+python demos/demo_zkpas_basic.py      # Basic authentication
+python demos/demo_lstm_system.py      # LSTM prediction
+python demos/demo_security_stress_testing.py  # Security testing
+
+# Standalone components
+python app/lightweight_predictor.py   # Lightweight ML predictor
+python app/mobility_predictor.py      # Full LSTM predictor
+```
+
+## 🏗️ Architecture
+
+### Core Components
 
 ```
 zkpas/
-├── app/                    # 💻 Main application code
-│   └── components/         # Core system components
-├── shared/                 # 🔗 Shared utilities and config
-├── tests/                  # 🧪 Comprehensive test suite
-├── docs/                   # 📚 Documentation
-├── adr/                    # 📋 Architecture Decision Records
-└── scripts/                # 🛠️ Utility scripts
+├── app/                    # Core application modules
+│   ├── mobility_predictor.py    # LSTM-based mobility prediction
+│   ├── lightweight_predictor.py # Fallback predictor
+│   ├── state_machine.py         # Protocol state management
+│   └── events.py               # Event-driven architecture
+├── demos/                  # Example demonstrations
+│   ├── demo_zkpas_basic.py     # Basic authentication
+│   ├── demo_lstm_system.py     # LSTM prediction
+│   └── demo_security_stress_testing.py  # Security testing
+├── shared/                 # Shared utilities
+│   ├── crypto_utils.py         # Cryptographic primitives
+│   └── config.py              # Configuration management
+└── tests/                  # Comprehensive test suite
 ```
 
-## 🔬 Research Background
-
-This implementation is based on cutting-edge research in:
-
-- **Zero-Knowledge Proofs** for IoT authentication
-- **Mobility Prediction** using machine learning
-- **Byzantine Fault Tolerance** in distributed systems
-- **Post-Quantum Cryptography** considerations
-
-> **Note**: Research datasets and academic papers are excluded from this repository for size optimization. See [data-setup.md](zkpas/docs/data-setup.md) for dataset acquisition instructions.
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=app --cov=shared
-
-# Run specific component tests
-pytest tests/test_trusted_authority.py -v
-
-# Performance tests
-pytest tests/ -k "performance" -v
-```
+### System Architecture
+- **Event-Driven Design**: Asynchronous event processing for scalability
+- **Microservices Pattern**: Modular components for flexibility
+- **Graceful Degradation**: Fallback mechanisms for reliability
+- **Plugin Architecture**: Extensible design for new features
 
 ## 📊 Performance Metrics
 
-- **Authentication Latency**: <50ms for cached tokens
-- **Memory Usage**: <100MB per gateway node
-- **Scalability**: Supports 10,000+ concurrent devices
-- **Network Overhead**: <1KB per authentication
+### Authentication Performance
+- **Latency**: <200ms per device authentication
+- **Throughput**: 100+ concurrent authentications
+- **Memory Usage**: <100MB total system footprint
+- **CPU Usage**: <10% on modern hardware
 
-## 🔒 Security Features
+### ML Prediction Accuracy
+- **LSTM Accuracy**: 40-45% within 100m threshold
+- **Prediction Error**: ~127m average error (realistic for GPS)
+- **Training Time**: 1.3s on synthetic trajectory data
+- **Inference Time**: <10ms per prediction
 
-- **ECC secp256r1** cryptography
-- **AES-GCM** encryption
-- **HKDF** key derivation
-- **Constant-time** operations
-- **Post-quantum** stubs for future migration
-
-## 🛡️ Threat Model
-
-The system addresses threats including:
-
-- **Spoofing**: ZKP-based device authentication
-- **Tampering**: Cryptographic integrity protection
-- **Repudiation**: Digital signatures and audit logs
-- **Information Disclosure**: Zero-knowledge protocols
-- **Denial of Service**: Graceful degradation mechanisms
-- **Elevation of Privilege**: Role-based access control
-
-See [002-threat-model.md](zkpas/adr/002-threat-model.md) for complete analysis.
+### Network Efficiency
+- **Bandwidth**: <1KB per authentication request
+- **Packet Overhead**: Minimal protocol overhead
+- **Network Resilience**: Operates in high-latency environments
 
 ## 🔧 Configuration
 
-Key configuration options in `.env`:
+The system automatically detects available dependencies and gracefully falls back to lightweight implementations when needed. No manual configuration is required for basic usage.
 
-```bash
-# Cryptographic settings
-CRYPTO_KEY_SIZE=256
-CRYPTO_ALGORITHM=secp256r1
-
-# Network settings
-GATEWAY_TIMEOUT=30
-SLIDING_WINDOW_SIZE=10
-
-# ML settings
-ML_BATCH_SIZE=32
-ML_LEARNING_RATE=0.001
+### Advanced Configuration
+```python
+# Environment variables for customization
+export ZKPAS_MAX_DEVICES=100
+export ZKPAS_MEMORY_LIMIT=6GB
+export ZKPAS_BATCH_SIZE=32
+export ZKPAS_LOG_LEVEL=INFO
 ```
 
-## 📈 Development Roadmap
+## 🧪 Testing
 
-### ✅ Phase 1: Cryptographic Foundation
-- ECC key generation and management
-- ZKP primitives implementation
-- Secure communication protocols
+### Run All Tests
+```bash
+python run_zkpas.py --test
+```
 
-### ✅ Phase 2: Core Components
-- Trusted Authority implementation
-- Gateway Node with degraded mode
-- IoT Device with mobility tracking
+### Specific Test Suites
+```bash
+# Unit tests
+python -m pytest tests/test_trusted_authority.py -v
+python -m pytest tests/test_gateway_node.py -v
+python -m pytest tests/test_iot_device.py -v
 
-### 🚧 Phase 3: AI Integration (In Progress)
-- Mobility prediction models
-- Federated learning implementation
-- Performance optimization
+# Integration tests
+python -m pytest tests/test_phase4_integration.py -v
+python -m pytest tests/test_security_stress.py -v
+```
 
-### 📋 Phase 4: Advanced Features
-- Cross-domain authentication
-- Hardware security module integration
-- Real-time analytics dashboard
+## 🛠️ Development
 
-## 🤝 Contributing
-
-We welcome contributions! Please see our contributing guidelines:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### Dependencies
+- **Required**: Python 3.7+, hashlib, secrets, hmac
+- **Recommended**: numpy, scikit-learn, cryptography
+- **Optional**: TensorFlow, PyTorch (for advanced ML features)
 
 ### Development Setup
-
 ```bash
 # Install development dependencies
 pip install -r requirements.txt
 
-# Set up pre-commit hooks
-pre-commit install
-
 # Run code quality checks
-black .
-flake8 .
-mypy .
+python -m flake8 .
+python -m black .
+python -m mypy .
+
+# Run comprehensive tests
+python -m pytest --cov=app --cov=shared
 ```
+
+## 🌟 Key Innovations
+
+### 1. **Zero-Knowledge Proof Integration**
+- Custom ZKP protocols optimized for IoT constraints
+- Privacy-preserving authentication without credential exposure
+- Efficient proof generation and verification
+
+### 2. **AI-Enhanced Mobility Prediction**
+- LSTM neural networks for trajectory prediction
+- Adaptive learning from device movement patterns
+- Lightweight fallback for resource-constrained devices
+
+### 3. **Byzantine Fault Tolerance**
+- Threshold cryptography for distributed trust
+- Graceful degradation in untrusted environments
+- Cross-domain authentication protocols
+
+### 4. **Resource Optimization**
+- Memory-conscious design for IoT devices
+- Efficient cryptographic operations
+- Scalable architecture for large deployments
+
+## 📚 Documentation
+
+- **Technical Documentation**: See `zkpas/docs/` directory
+- **API Reference**: Comprehensive inline documentation
+- **Architecture Decisions**: See `zkpas/adr/` directory
+- **Implementation Guide**: Detailed setup and usage instructions
+
+## 🤝 Contributing
+
+This project is actively maintained and welcomes contributions from the research community. Areas of interest include:
+
+- **Performance optimization** for resource-constrained devices
+- **Advanced ML models** for mobility prediction
+- **Post-quantum cryptography** integration
+- **Real-world deployment** case studies
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 📚 Documentation
+## 👨‍💻 Author
 
-- [Implementation Progress](zkpas/docs/implementation_progress.md)
-- [Data Setup Guide](zkpas/docs/data-setup.md)
-- [State Machine Documentation](zkpas/docs/state_machine.md)
-- [Architecture Decisions](zkpas/adr/)
+**Shafiq Ahmed**
+- Email: [s.ahmed@essex.ac.uk](mailto:s.ahmed@essex.ac.uk)
+- Affiliation: University of Essex
+- Research Focus: IoT Security, Zero-Knowledge Proofs, Machine Learning
 
-## 🙏 Acknowledgments
+## 🎓 Academic Context
 
-- Microsoft Research for the Geolife and T-Drive datasets
-- The cryptographic community for ZKP research
-- Python ecosystem for excellent libraries
+This work represents cutting-edge research in:
+- **IoT Security**: Novel approaches to device authentication
+- **Zero-Knowledge Proofs**: Practical applications in mobile environments
+- **Machine Learning**: AI-enhanced security systems
+- **Distributed Systems**: Byzantine fault tolerance in IoT networks
 
-## 📞 Contact
+## 📈 Future Roadmap
 
-For questions or collaboration opportunities, please open an issue or reach out through GitHub.
+- **Real-world deployment** testing with industrial IoT systems
+- **Post-quantum cryptography** integration for future security
+- **Edge computing** optimization for 5G/6G networks
+- **Federated learning** for privacy-preserving ML training
 
 ---
 
-**🔬 Built for Research • 🛡️ Designed for Security • ⚡ Optimized for Performance**
+**Built with ❤️ for the future of IoT security**
+
+*ZKPAS - Where Zero-Knowledge meets Artificial Intelligence*

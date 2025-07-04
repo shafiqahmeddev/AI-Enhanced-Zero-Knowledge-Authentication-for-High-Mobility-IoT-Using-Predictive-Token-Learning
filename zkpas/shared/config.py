@@ -3,41 +3,104 @@ Centralized Configuration for ZKPAS Simulation
 
 This module provides all configuration constants and parameters for the
 Zero-Knowledge Proof Authentication System simulation.
+
+Enhanced with comprehensive error handling and fallback mechanisms.
 """
 
 import os
+import logging
 from enum import Enum
-from typing import Final
+from typing import Final, Dict, Any, Optional
 
-from dotenv import load_dotenv
+# Safe import of dotenv with fallback
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    DOTENV_AVAILABLE = True
+except ImportError:
+    DOTENV_AVAILABLE = False
+    logging.warning("python-dotenv not available, using environment variables only")
 
-# Load environment variables
-load_dotenv()
+logger = logging.getLogger(__name__)
+
+
+def safe_getenv(key: str, default: Any, convert_type: type = str) -> Any:
+    """Safely get environment variable with type conversion and fallback."""
+    try:
+        value = os.getenv(key, str(default))
+        if convert_type == str:
+            return value
+        elif convert_type == int:
+            return int(value)
+        elif convert_type == float:
+            return float(value)
+        elif convert_type == bool:
+            return value.lower() in ('true', '1', 'yes', 'on')
+        elif convert_type == bytes:
+            return value.encode()
+        else:
+            return convert_type(value)
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Failed to convert {key}={os.getenv(key)} to {convert_type}, using default: {default}")
+        return default
 
 
 class CryptoConfig:
-    """Cryptographic configuration constants."""
+    """Cryptographic configuration constants with safe fallbacks."""
     
     # Elliptic Curve Configuration
-    ECC_CURVE: Final[str] = os.getenv("ECC_CURVE", "secp256r1")
+    ECC_CURVE: Final[str] = safe_getenv("ECC_CURVE", "secp256r1")
     
     # Hash Algorithm
-    HASH_ALGORITHM: Final[str] = os.getenv("HASH_ALGORITHM", "sha256")
+    HASH_ALGORITHM: Final[str] = safe_getenv("HASH_ALGORITHM", "sha256")
     
     # Key Derivation
-    HKDF_SALT: Final[bytes] = os.getenv("HKDF_SALT", "zkpas_simulation_2025").encode()
+    HKDF_SALT: Final[bytes] = safe_getenv("HKDF_SALT", "zkpas_simulation_2025", bytes)
     
     # Key Sizes (in bits)
-    PRIVATE_KEY_SIZE: Final[int] = 256
-    PUBLIC_KEY_SIZE: Final[int] = 512
-    SYMMETRIC_KEY_SIZE: Final[int] = 256
+    PRIVATE_KEY_SIZE: Final[int] = safe_getenv("PRIVATE_KEY_SIZE", 256, int)
+    PUBLIC_KEY_SIZE: Final[int] = safe_getenv("PUBLIC_KEY_SIZE", 512, int)
+    SYMMETRIC_KEY_SIZE: Final[int] = safe_getenv("SYMMETRIC_KEY_SIZE", 256, int)
     
     # ZKP Parameters
-    ZKP_CHALLENGE_SIZE: Final[int] = 256
-    ZKP_RESPONSE_SIZE: Final[int] = 256
+    ZKP_CHALLENGE_SIZE: Final[int] = safe_getenv("ZKP_CHALLENGE_SIZE", 256, int)
+    ZKP_RESPONSE_SIZE: Final[int] = safe_getenv("ZKP_RESPONSE_SIZE", 256, int)
     
     # Post-Quantum Preparation
-    PQ_KEY_SIZE: Final[int] = 1024  # Placeholder for future PQ algorithms
+    PQ_KEY_SIZE: Final[int] = safe_getenv("PQ_KEY_SIZE", 1024, int)  # Placeholder for future PQ algorithms
+
+
+def get_config() -> Dict[str, Any]:
+    """Get all configuration as a dictionary with safe fallbacks."""
+    try:
+        config = {
+            # Crypto configuration
+            "ECC_CURVE": CryptoConfig.ECC_CURVE,
+            "HASH_ALGO": CryptoConfig.HASH_ALGORITHM,
+            "HKDF_SALT": CryptoConfig.HKDF_SALT,
+            "PRIVATE_KEY_SIZE": CryptoConfig.PRIVATE_KEY_SIZE,
+            "PUBLIC_KEY_SIZE": CryptoConfig.PUBLIC_KEY_SIZE,
+            "SYMMETRIC_KEY_SIZE": CryptoConfig.SYMMETRIC_KEY_SIZE,
+            "ZKP_CHALLENGE_SIZE": CryptoConfig.ZKP_CHALLENGE_SIZE,
+            "ZKP_RESPONSE_SIZE": CryptoConfig.ZKP_RESPONSE_SIZE,
+            "PQ_KEY_SIZE": CryptoConfig.PQ_KEY_SIZE,
+            
+            # System configuration
+            "dotenv_available": DOTENV_AVAILABLE,
+            "config_status": "loaded"
+        }
+        
+        return config
+    except Exception as e:
+        logger.error(f"Error loading configuration: {e}")
+        # Return minimal safe configuration
+        return {
+            "ECC_CURVE": "secp256r1",
+            "HASH_ALGO": "sha256",
+            "HKDF_SALT": b"zkpas_simulation_2025",
+            "config_status": "fallback",
+            "error": str(e)
+        }
 
 
 class SimulationConfig:

@@ -1,46 +1,230 @@
-# ZKPAS Repository .gitignore
-# This file excludes heavy datasets, sensitive files, and build artifacts
-
 # =============================================================================
-# DATASETS AND LARGE FILES (HEAVY-WEIGHT FILES)
+# ZKPAS - Zero Knowledge Proof Authentication System
+# Comprehensive .gitignore for lightweight repository
 # =============================================================================
 
-# Entire Datasets Directory (Very Large - 2.4GB+)
+# =============================================================================
+# LARGE DATASETS AND RESEARCH FILES (EXCLUDED FOR LIGHTWEIGHT REPO)
+# =============================================================================
+
+# Research datasets (2.4GB+)
 Datasets/
+*/Datasets/
 
-# Specific exclusions for reference:
-# Datasets/Geolife Trajectories 1.3/Data/
-# Datasets/release/taxi_log_2008_by_id/
-
-# Research Articles and Papers (Can be large)
+# Research articles and papers
 Research Article/
+*/Research Article/
 *.pdf
-!docs/*.pdf  # Allow documentation PDFs
+!zkpas/docs/*.pdf  # Allow technical documentation PDFs
 
-# LaTeX Files and Academic Documents
-*.tex
-*.latex
-
-# Implementation Blueprints and Specifications
+# Technical specifications and blueprints
 *Blueprint*.md
 *blueprint*.md
 ZKPAS Implementation Blueprint*
 *Implementation Blueprint*
 
-# LaTeX compilation files
-*.aux
-*.bbl
-*.blg
-*.fdb_latexmk
-*.fls
-*.log
-*.out
-*.toc
-*.synctex.gz
-*.synctex(busy)
+# Development instructions (not for public repo)
+CLAUDE.md
+*/CLAUDE.md
+
+# Cleanup and temporary documentation
+CLEANUP_SUMMARY.md
+*CLEANUP*.md
 
 # =============================================================================
-# SENSITIVE FILES AND CREDENTIALS
+# PYTHON VIRTUAL ENVIRONMENTS AND DEPENDENCIES
+# =============================================================================
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+*.virtualenv
+.python-version
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# =============================================================================
+# MACHINE LEARNING AND DATA SCIENCE FILES
+# =============================================================================
+
+# Model files and weights
+models/
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+*.model
+*.weights
+*.ckpt
+checkpoints/
+saved_models/
+
+# Data files
+data/
+*/data/
+*.csv
+*.tsv
+*.json
+*.jsonl
+*.parquet
+*.feather
+*.arrow
+*.npy
+*.npz
+
+# MLflow and experiment tracking
+mlruns/
+mlflow-runs/
+wandb/
+.wandb/
+
+# TensorFlow
+*.pb
+saved_model/
+tensorboard_logs/
+
+# PyTorch
+*.pth
+*.pt
+
+# =============================================================================
+# SIMULATION AND OUTPUT FILES
+# =============================================================================
+
+# Simulation results
+results/
+output/
+simulations/
+*/results/
+*/output/
+*.out
+*.result
+
+# Log files
+logs/
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Performance and profiling
+*.prof
+*.cprof
+
+# =============================================================================
+# DEVELOPMENT AND TESTING FILES
+# =============================================================================
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+.hypothesis/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# IPython
+profile_default/
+ipython_config.py
+
+# =============================================================================
+# SYSTEM AND IDE FILES
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.temp
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.nfs*
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+.spyderproject
+.spyproject
+.ropeproject
+*.sublime-project
+*.sublime-workspace
+
+# =============================================================================
+# SECURITY AND SENSITIVE FILES
 # =============================================================================
 
 # Environment files with secrets
@@ -75,193 +259,29 @@ config/staging.yaml
 *.sqlite3
 
 # =============================================================================
-# PYTHON DEVELOPMENT FILES
-# =============================================================================
-
-# Virtual environments
-venv/
-env/
-ENV/
-.venv/
-.env/
-*.virtualenv
-
-# Python bytecode
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-*.manifest
-*.spec
-
-# Unit test / coverage reports
-htmlcov/
-.coverage
-.coverage.*
-.cache
-.pytest_cache/
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb
-
-# IPython
-profile_default/
-ipython_config.py
-
-# =============================================================================
-# MACHINE LEARNING AND DATA SCIENCE
-# =============================================================================
-
-# Model files
-models/
-*.pkl
-*.pickle
-*.h5
-*.hdf5
-*.model
-*.weights
-checkpoints/
-wandb/
-
-# Data files
-data/raw/
-data/processed/
-data/interim/
-data/external/
-*.csv
-*.tsv
-*.json
-*.jsonl
-*.parquet
-*.feather
-*.arrow
-
-# TensorFlow
-*.pb
-saved_model/
-tensorboard_logs/
-
-# PyTorch
-*.pth
-*.pt
-
-# =============================================================================
-# SYSTEM AND IDE FILES
-# =============================================================================
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-Icon?
-._*
-.Spotlight-V100
-.Trashes
-
-# Windows
-Thumbs.db
-Thumbs.db:encryptable
-ehthumbs.db
-ehthumbs_vista.db
-*.tmp
-*.temp
-Desktop.ini
-
-# Linux
-*~
-.nfs*
-
-# IDE files
-.vscode/settings.json
-.vscode/launch.json
-.vscode/extensions.json
-.idea/
-*.swp
-*.swo
-*~
-
-# =============================================================================
-# LOGS AND TEMPORARY FILES
-# =============================================================================
-
-# Log files
-logs/
-*.log
-*.log.*
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Temporary files
-tmp/
-temp/
-.tmp/
-.temp/
-
-# =============================================================================
 # DOCUMENTATION BUILD FILES
 # =============================================================================
 
 # Sphinx documentation
 docs/_build/
 docs/build/
+_build/
 
 # mkdocs documentation
 site/
 
-# =============================================================================
-# SIMULATION AND OUTPUT FILES
-# =============================================================================
-
-# Simulation results
-results/
-output/
-simulations/
+# LaTeX compilation files
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
 *.out
-*.result
-
-# Performance and profiling
-*.prof
-*.cprof
-
-# =============================================================================
-# SECURITY AND COMPLIANCE
-# =============================================================================
-
-# Security scan results
-.bandit
-.safety
-security-reports/
-
-# Compliance reports
-compliance/
-audit-logs/
+*.toc
+*.synctex.gz
+*.synctex(busy)
+*.tex
+*.latex
 
 # =============================================================================
 # DEPLOYMENT AND INFRASTRUCTURE
@@ -270,6 +290,7 @@ audit-logs/
 # Docker
 .dockerignore
 docker-compose.override.yml
+Dockerfile.local
 
 # Kubernetes
 *.kubeconfig
@@ -281,18 +302,33 @@ docker-compose.override.yml
 .terraform.lock.hcl
 
 # =============================================================================
-# ALLOW SPECIFIC IMPORTANT FILES
+# TEMPORARY FILES
 # =============================================================================
 
-# Keep documentation PDFs in docs folder
-!docs/*.pdf
+# Temporary files
+tmp/
+temp/
+.tmp/
+.temp/
+*.tmp
+*.temp
 
-# Keep user guides and essential documentation
-!Datasets/Geolife\ Trajectories\ 1.3/User\ Guide-1.3.pdf
-!Datasets/release/user_guide.pdf
+# Node.js (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =============================================================================
+# KEEP ESSENTIAL FILES (ALLOWLIST)
+# =============================================================================
+
+# Keep essential documentation
+!README.md
+!LICENSE
+!requirements.txt
+!setup.py
+!pyproject.toml
 
 # Keep example environment file
 !.env.example
-
-# Keep essential configuration
-!zkpas/.env.example

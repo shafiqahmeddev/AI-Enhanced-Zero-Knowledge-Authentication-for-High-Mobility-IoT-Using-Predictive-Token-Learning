@@ -937,21 +937,46 @@ class MobilityPredictor:
     def _calculate_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """Calculate distance between two points using Haversine formula."""
         try:
+            # Handle edge cases
+            if lat1 == lat2 and lon1 == lon2:
+                return 0.0
+            
+            # Validate coordinates
+            if abs(lat1) > 90 or abs(lat2) > 90 or abs(lon1) > 180 or abs(lon2) > 180:
+                logger.warning(f"Invalid coordinates: ({lat1}, {lon1}) to ({lat2}, {lon2})")
+                return 0.0
+            
             # Convert to radians
-            lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
+            lat1_rad = np.radians(lat1)
+            lon1_rad = np.radians(lon1)
+            lat2_rad = np.radians(lat2)
+            lon2_rad = np.radians(lon2)
             
             # Haversine formula
-            dlat = lat2 - lat1
-            dlon = lon2 - lon1
-            a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
+            dlat = lat2_rad - lat1_rad
+            dlon = lon2_rad - lon1_rad
+            a = (np.sin(dlat/2)**2 + 
+                 np.cos(lat1_rad) * np.cos(lat2_rad) * np.sin(dlon/2)**2)
+            
+            # Ensure a is within valid range [0, 1]
+            a = max(0.0, min(1.0, a))
+            
             c = 2 * np.arcsin(np.sqrt(a))
             
             # Earth radius in meters
             r = 6371000
             
-            return r * c
+            distance = r * c
             
-        except Exception:
+            # Sanity check - if distance is unreasonably large, something is wrong
+            if distance > 20003931:  # Half of Earth's circumference
+                logger.warning(f"Unreasonable distance calculated: {distance}m")
+                return 0.0
+            
+            return distance
+            
+        except Exception as e:
+            logger.error(f"Error calculating distance: {e}")
             return 0.0
     
     def is_ready_for_prediction(self) -> bool:
