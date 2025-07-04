@@ -21,6 +21,7 @@ class EventType(Enum):
     
     # Authentication flow events
     AUTH_REQUEST = auto()
+    AUTHENTICATION_STARTED = auto()
     COMMITMENT_GENERATED = auto()
     CHALLENGE_CREATED = auto()
     ZKP_COMPUTED = auto()

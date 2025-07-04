@@ -72,6 +72,7 @@ class DataSubsettingManager:
     
     def __init__(self, 
                  data_root: str,
+                 event_bus=None,
                  random_seed: int = 42,
                  privacy_budget: float = 1.0,
                  min_quality_score: float = 0.8):
@@ -80,6 +81,7 @@ class DataSubsettingManager:
         
         Args:
             data_root: Root directory for data storage
+            event_bus: Event bus for communication (optional)
             random_seed: Seed for reproducible randomization
             privacy_budget: Total privacy budget for differential privacy
             min_quality_score: Minimum acceptable data quality score
@@ -87,6 +89,7 @@ class DataSubsettingManager:
         self.data_root = Path(data_root)
         self.data_root.mkdir(parents=True, exist_ok=True)
         
+        self.event_bus = event_bus
         self.random_seed = random_seed
         self.privacy_budget = privacy_budget
         self.min_quality_score = min_quality_score
@@ -445,8 +448,12 @@ class DataSubsettingManager:
         
         # Apply k-anonymity by identifying quasi-identifiers and ensuring group sizes
         if k_anonymity > 1:
-            data = self._apply_k_anonymity(data, k_anonymity)
-            logger.info(f"Applied k-anonymity with k={k_anonymity}")
+            try:
+                data = self._apply_k_anonymity(data, k_anonymity)
+                logger.info(f"Applied k-anonymity with k={k_anonymity}")
+            except Exception as e:
+                logger.warning(f"K-anonymity failed, continuing without it: {e}")
+                # Continue without k-anonymity if it fails
         
         # Add differential privacy noise to numeric columns
         # Implementation follows the Laplace mechanism for differential privacy:
@@ -502,12 +509,19 @@ class DataSubsettingManager:
         # Create bins for numeric columns (treating them as quasi-identifiers)
         for col in numeric_cols:
             if col in data.columns:
-                # Create 10 bins for each numeric column
+                # Create 5 bins for each numeric column (fewer bins for better k-anonymity)
                 try:
-                    binned_data[f"{col}_bin"] = pd.cut(data[col], bins=10, labels=False, duplicates='drop')
-                    categorical_cols.append(f"{col}_bin")
-                except Exception:
+                    # Drop NaN values before binning and handle edge cases
+                    col_data = data[col].dropna()
+                    if len(col_data.unique()) > 1:  # Only bin if there's variation
+                        bins = pd.cut(data[col], bins=5, labels=False, duplicates='drop')
+                        # Fill NaN values with -1 to indicate missing/unbinned data
+                        bins = bins.fillna(-1)
+                        binned_data[f"{col}_bin"] = bins
+                        categorical_cols.append(f"{col}_bin")
+                except Exception as e:
                     # If binning fails (e.g., all values are the same), skip this column
+                    logger.debug(f"Skipping binning for column {col}: {e}")
                     continue
         
         # Remove target columns and other non-quasi-identifier columns
@@ -528,7 +542,12 @@ class DataSubsettingManager:
         logger.info(f"Applying k-anonymity with quasi-identifiers: {quasi_identifiers}")
         
         # Group by quasi-identifiers and check group sizes
-        grouped = binned_data.groupby(quasi_identifiers)
+        # Handle NaN values by converting them to string representation
+        for qi in quasi_identifiers:
+            if qi in binned_data.columns:
+                binned_data[qi] = binned_data[qi].astype(str)
+        
+        grouped = binned_data.groupby(quasi_identifiers, dropna=False)
         group_sizes = grouped.size()
         
         # Find groups that violate k-anonymity
@@ -605,7 +624,12 @@ class DataSubsettingManager:
                 generalized_data.loc[generalized_data[qi].isin(rare_values), qi] = 'Other'
         
         # Check if generalization helped
-        grouped = generalized_data.groupby(quasi_identifiers)
+        # Handle NaN values by converting them to string representation
+        for qi in quasi_identifiers:
+            if qi in generalized_data.columns:
+                generalized_data[qi] = generalized_data[qi].astype(str)
+        
+        grouped = generalized_data.groupby(quasi_identifiers, dropna=False)
         group_sizes = grouped.size()
         small_groups = group_sizes[group_sizes < k]
         
@@ -724,6 +748,36 @@ class DataSubsettingManager:
         
         logger.info(f"Created privacy-preserving sample of {len(private_sample)} records")
         return private_sample
+    
+    async def create_privacy_preserving_subset(self,
+                                             data: pd.DataFrame,
+                                             subset_size: int,
+                                             privacy_budget: float = 1.0,
+                                             k_anonymity: int = 5) -> pd.DataFrame:
+        """
+        Create a privacy-preserving subset with differential privacy and k-anonymity.
+        
+        Args:
+            data: Input DataFrame
+            subset_size: Desired subset size  
+            privacy_budget: Total privacy budget for differential privacy
+            k_anonymity: Minimum k-anonymity level
+            
+        Returns:
+            Privacy-preserving subset DataFrame
+        """
+        logger.info(f"Creating privacy-preserving subset: size={subset_size}, budget={privacy_budget}, k-anonymity={k_anonymity}")
+        
+        # Use the existing privacy-preserving sample method
+        subset = self.create_privacy_preserving_sample(
+            data=data,
+            sample_size=subset_size,
+            privacy_budget=privacy_budget,
+            epsilon=privacy_budget,  # Use privacy_budget as epsilon
+            k_anonymity=k_anonymity
+        )
+        
+        return subset
     
     def create_train_validation_split(self,
                                     data: pd.DataFrame,

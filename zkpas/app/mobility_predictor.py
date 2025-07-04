@@ -3,6 +3,8 @@ Mobility Prediction Module for ZKPAS IoT Devices
 
 This module implements machine learning-based mobility prediction for IoT devices
 to enable proactive authentication and seamless handoffs between gateways.
+
+Enhanced to use pre-trained models on real-world mobility datasets.
 """
 
 import asyncio
@@ -12,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Any
 from uuid import UUID
 from enum import Enum, auto
+from datetime import datetime
 
 from loguru import logger
 from sklearn.ensemble import RandomForestRegressor
@@ -85,43 +88,139 @@ class MobilityPrediction:
 
 
 class MobilityPredictor:
-    """ML-based mobility predictor for IoT devices."""
+    """Enhanced ML-based mobility predictor using pre-trained models on real datasets."""
     
-    def __init__(self, event_bus: EventBus):
+    def __init__(self, event_bus: EventBus, model_trainer=None):
+        """
+        Initialize mobility predictor.
+        
+        Args:
+            event_bus: Event bus for communication
+            model_trainer: Optional pre-trained model trainer instance
+        """
         self.event_bus = event_bus
+        self.model_trainer = model_trainer
         
-        # ML models
-        self.location_model = RandomForestRegressor(n_estimators=100, random_state=42)
-        self.pattern_classifier = RandomForestRegressor(n_estimators=50, random_state=42)
-        self.scaler = StandardScaler()
+        # Pre-trained models (loaded from model_trainer)
+        self.mobility_model = None
+        self.pattern_model = None
+        self.risk_model = None
+        self.mobility_scaler = None
+        self.pattern_scaler = None
+        self.risk_scaler = None
+        self.pattern_encoder = None
         
-        # Training data storage
+        # Real-time tracking data
         self.mobility_history: Dict[str, List[LocationPoint]] = {}
         self.feature_history: Dict[str, List[MobilityFeatures]] = {}
         
-        # Model metadata
-        self.is_trained = False
-        self.last_training_time = 0.0
-        self.model_accuracy = 0.0
+        # Model status
+        self.models_loaded = False
+        self.model_performance = {}
         
         # Configuration
-        self.max_history_points = 10000
-        self.min_training_samples = 100
-        self.retrain_interval = 3600  # 1 hour
+        self.max_history_points = 1000
+        self.min_prediction_points = 5
         self.prediction_horizons = [60, 300, 900]  # 1min, 5min, 15min
+        self.time_window_hours = 6  # Hours of history for prediction features
+        
+        # Load pre-trained models if available
+        if model_trainer:
+            self._load_pretrained_models()
         
         # Setup event handlers
         self._setup_event_handlers()
         
-        logger.info("Mobility predictor initialized")
+        logger.info(f"Enhanced mobility predictor initialized (models_loaded={self.models_loaded})")
+    
+    def _load_pretrained_models(self):
+        """Load pre-trained models from model trainer."""
+        try:
+            # Load mobility prediction model (try LSTM first, then fallback to traditional)
+            self.mobility_model = self.model_trainer.get_model("mobility_prediction_lstm")
+            self.mobility_scaler = self.model_trainer.get_scaler("mobility_prediction_lstm")
+            
+            # Fallback to traditional model if LSTM not available
+            if self.mobility_model is None:
+                self.mobility_model = self.model_trainer.get_model("mobility_prediction")
+                self.mobility_scaler = self.model_trainer.get_scaler("mobility_prediction")
+            
+            # Load pattern classification model
+            self.pattern_model = self.model_trainer.get_model("pattern_classification")
+            self.pattern_scaler = self.model_trainer.get_scaler("pattern_classification")
+            self.pattern_encoder = self.model_trainer.get_encoder("pattern_classification")
+            
+            # Load risk assessment model
+            self.risk_model = self.model_trainer.get_model("risk_assessment")
+            self.risk_scaler = self.model_trainer.get_scaler("risk_assessment")
+            
+            # Check if all models loaded successfully
+            models_available = [
+                self.mobility_model is not None,
+                self.pattern_model is not None,
+                self.risk_model is not None
+            ]
+            
+            # Log which mobility model is being used
+            if self.mobility_model is not None:
+                lstm_metadata = self.model_trainer.get_metadata("mobility_prediction_lstm")
+                if lstm_metadata:
+                    logger.info("✅ Using LSTM mobility prediction model")
+                else:
+                    logger.info("✅ Using traditional Random Forest mobility prediction model")
+            
+            self.models_loaded = all(models_available)
+            
+            if self.models_loaded:
+                # Load performance metrics
+                for model_name in ["mobility_prediction_lstm", "mobility_prediction", "pattern_classification", "risk_assessment"]:
+                    metadata = self.model_trainer.get_metadata(model_name)
+                    if metadata:
+                        self.model_performance[model_name] = metadata.performance_metrics
+                
+                logger.info("✅ All pre-trained models loaded successfully")
+            else:
+                logger.warning(f"⚠️ Some models missing: mobility={self.mobility_model is not None}, "
+                             f"pattern={self.pattern_model is not None}, risk={self.risk_model is not None}")
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to load pre-trained models: {e}")
+            self.models_loaded = False
     
     def _setup_event_handlers(self) -> None:
         """Setup event handlers for mobility-related events."""
-        self.event_bus.subscribe(EventType.LOCATION_CHANGED, self._handle_location_update)
-        self.event_bus.subscribe(EventType.MOBILITY_PREDICTED, self._handle_prediction_feedback)
+        # Subscribe to location updates
+        self.event_bus.subscribe_sync(EventType.LOCATION_CHANGED, self._handle_location_update)
+        
+        # Subscribe to authentication events for context
+        self.event_bus.subscribe_sync(EventType.DEVICE_AUTHENTICATED, self._handle_auth_event)
+        self.event_bus.subscribe_sync(EventType.MOBILITY_PREDICTED, self._handle_prediction_feedback)
     
     async def _handle_location_update(self, event: Event) -> None:
         """Handle location update event."""
+        device_id = event.data.get("device_id")
+        location_data = event.data.get("location")
+        
+        if device_id and location_data:
+            location = LocationPoint(
+                latitude=location_data["latitude"],
+                longitude=location_data["longitude"],
+                timestamp=location_data["timestamp"],
+                altitude=location_data.get("altitude")
+            )
+            await self.update_location(device_id, location)
+    
+    async def _handle_auth_event(self, event: Event) -> None:
+        """Handle authentication event for contextual information."""
+        # This could be used to correlate authentication patterns with mobility
+        device_id = event.data.get("device_id")
+        if device_id:
+            logger.debug(f"Authentication event for device {device_id}")
+    
+    async def _handle_prediction_feedback(self, event: Event) -> None:
+        """Handle prediction feedback for model improvement."""
+        # This could be used for online learning in future versions
+        pass
         device_id = event.data.get("device_id")
         location_data = event.data.get("location")
         
@@ -200,95 +299,505 @@ class MobilityPredictor:
             if len(self.feature_history[device_id]) > self.max_history_points:
                 self.feature_history[device_id] = self.feature_history[device_id][-self.max_history_points:]
         
-        # Check if we need to retrain models
-        if self._should_retrain():
-            await self.train_models()
+        # Check if we need to retrain models (simplified for pre-trained model system)
+        # In the pre-trained model system, we don't retrain during runtime
         
         logger.debug(f"Updated location for device {device_id}")
     
     async def predict_mobility(self, device_id: str) -> List[MobilityPrediction]:
-        """Predict future mobility for a device."""
-        if not self.is_trained or device_id not in self.mobility_history:
+        """Enhanced mobility prediction using pre-trained models."""
+        if device_id not in self.mobility_history:
             return []
         
-        current_location = self.mobility_history[device_id][-1]
+        history = self.mobility_history[device_id]
+        if len(history) < self.min_prediction_points:
+            return []
+        
+        current_location = history[-1]
         predictions = []
         
         for horizon in self.prediction_horizons:
             try:
-                # Extract current features
-                features = self._extract_features(device_id, current_location)
-                if not features:
-                    continue
-                
-                # Convert features to ML input
-                feature_vector = self._features_to_vector(features, horizon)
-                feature_vector_scaled = self.scaler.transform([feature_vector])
-                
-                # Predict location
-                predicted_coords = self.location_model.predict(feature_vector_scaled)[0]
-                predicted_lat, predicted_lon = predicted_coords[0], predicted_coords[1]
-                
-                # Predict mobility pattern
-                pattern_prob = self.pattern_classifier.predict(feature_vector_scaled)[0]
-                mobility_pattern = self._classify_pattern(pattern_prob)
-                
-                # Create prediction
-                predicted_location = LocationPoint(
-                    latitude=predicted_lat,
-                    longitude=predicted_lon,
-                    timestamp=time.time() + horizon
-                )
-                
-                prediction = MobilityPrediction(
-                    device_id=device_id,
-                    predicted_location=predicted_location,
-                    confidence=min(self.model_accuracy, 0.95),
-                    time_horizon=horizon,
-                    mobility_pattern=mobility_pattern,
-                    handoff_probability=self._calculate_handoff_probability(
-                        current_location, predicted_location
+                # Use pre-trained models if available
+                if self.models_loaded:
+                    prediction = await self._predict_with_pretrained_models(
+                        device_id, current_location, horizon
                     )
-                )
-                
-                predictions.append(prediction)
-                
+                    if prediction:
+                        predictions.append(prediction)
+                else:
+                    # Fallback to simple heuristic prediction
+                    prediction = self._predict_with_heuristics(
+                        device_id, current_location, horizon
+                    )
+                    if prediction:
+                        predictions.append(prediction)
+                        
             except Exception as e:
                 logger.error(f"Error predicting mobility for device {device_id}: {e}")
         
+        # Publish prediction event
+        if predictions and self.event_bus:
+            await self.event_bus.publish_event(
+                EventType.MOBILITY_PREDICTED,
+                correlation_id=f"prediction_{device_id}",
+                source="MobilityPredictor",
+                target=device_id,
+                data={
+                    "device_id": device_id,
+                    "predictions": [
+                        {
+                            "horizon_seconds": p.time_horizon,
+                            "predicted_location": {
+                                "latitude": p.predicted_location.latitude,
+                                "longitude": p.predicted_location.longitude,
+                                "timestamp": p.predicted_location.timestamp
+                            },
+                            "confidence": p.confidence,
+                            "mobility_pattern": p.mobility_pattern.name,
+                            "handoff_probability": p.handoff_probability
+                        } for p in predictions
+                    ]
+                }
+            )
+        
         return predictions
     
-    async def train_models(self) -> None:
-        """Train mobility prediction models."""
-        logger.info("Training mobility prediction models")
-        
+    async def _predict_with_pretrained_models(self, device_id: str, current_location: LocationPoint, 
+                                            horizon: float) -> Optional[MobilityPrediction]:
+        """Make prediction using pre-trained models on real data."""
         try:
-            # Collect training data from all devices
-            X, y_location, y_pattern = self._prepare_training_data()
+            history = self.mobility_history[device_id]
             
-            if len(X) < self.min_training_samples:
-                logger.warning(f"Not enough training samples: {len(X)} < {self.min_training_samples}")
-                return
+            # Extract features for prediction (same format as training)
+            features = self._extract_prediction_features(history, current_location)
+            if not features:
+                return None
             
             # Scale features
-            X_scaled = self.scaler.fit_transform(X)
+            features_scaled = self.mobility_scaler.transform([features])
             
-            # Train location prediction model
-            self.location_model.fit(X_scaled, y_location)
+            # Predict location using pre-trained mobility model
+            if self.mobility_model:
+                model_metadata = self.model_trainer.get_metadata("mobility_prediction_lstm")
+                
+                if model_metadata and model_metadata.model_type == "mobility_prediction_lstm":
+                    # Check if using TensorFlow LSTM or MLPRegressor simulation
+                    if model_metadata.model_params.get("tensorflow_available", False):
+                        # TensorFlow LSTM model prediction
+                        lstm_sequence = self._prepare_lstm_sequence(history, current_location)
+                        if lstm_sequence is not None:
+                            prediction = self.mobility_model.predict(lstm_sequence, verbose=0)[0]
+                            lat_pred, lon_pred = prediction[0], prediction[1]
+                        else:
+                            return None
+                    else:
+                        # MLPRegressor simulation prediction
+                        lstm_features = self._prepare_neural_network_features(history, current_location)
+                        if lstm_features is not None:
+                            features_scaled = self.mobility_scaler.transform([lstm_features])
+                            prediction = self.mobility_model.predict(features_scaled)[0]
+                            lat_pred, lon_pred = prediction[0], prediction[1]
+                        else:
+                            return None
+                else:
+                    # Traditional Random Forest model prediction
+                    if isinstance(self.mobility_model, dict):
+                        lat_pred = self.mobility_model['latitude_model'].predict(features_scaled)[0]
+                        lon_pred = self.mobility_model['longitude_model'].predict(features_scaled)[0]
+                    else:
+                        # Single model predicting both lat/lon
+                        prediction = self.mobility_model.predict(features_scaled)[0]
+                        lat_pred, lon_pred = prediction[0], prediction[1]
+                
+                predicted_location = LocationPoint(
+                    latitude=lat_pred,
+                    longitude=lon_pred,
+                    timestamp=time.time() + horizon
+                )
+            else:
+                return None
             
-            # Train pattern classification model
-            self.pattern_classifier.fit(X_scaled, y_pattern)
+            # Classify mobility pattern using pre-trained pattern model
+            mobility_pattern = MobilityPattern.RANDOM  # Default
+            confidence = 0.5  # Default confidence
             
-            # Evaluate model performance
-            self.model_accuracy = self._evaluate_models(X_scaled, y_location)
+            if self.pattern_model and self.pattern_scaler:
+                # Extract pattern features
+                pattern_features = self._extract_pattern_features_single(history)
+                if pattern_features:
+                    pattern_features_scaled = self.pattern_scaler.transform([pattern_features])
+                    pattern_pred = self.pattern_model.predict(pattern_features_scaled)[0]
+                    
+                    if self.pattern_encoder:
+                        pattern_name = self.pattern_encoder.inverse_transform([int(pattern_pred)])[0]
+                        try:
+                            mobility_pattern = MobilityPattern[pattern_name]
+                        except KeyError:
+                            mobility_pattern = MobilityPattern.RANDOM
+                    
+                    # Get confidence from model performance
+                    if "pattern_classification" in self.model_performance:
+                        confidence = self.model_performance["pattern_classification"].get("accuracy", 0.5)
             
-            self.is_trained = True
-            self.last_training_time = time.time()
+            # Calculate handoff probability
+            handoff_prob = self._calculate_handoff_probability(current_location, predicted_location)
             
-            logger.info(f"Models trained successfully. Accuracy: {self.model_accuracy:.3f}")
+            # Create prediction
+            prediction = MobilityPrediction(
+                device_id=device_id,
+                predicted_location=predicted_location,
+                confidence=confidence,
+                time_horizon=horizon,
+                mobility_pattern=mobility_pattern,
+                handoff_probability=handoff_prob
+            )
+            
+            return prediction
             
         except Exception as e:
-            logger.error(f"Error training models: {e}")
+            logger.error(f"Error in pre-trained model prediction: {e}")
+            return None
+    
+    def _predict_with_heuristics(self, device_id: str, current_location: LocationPoint, 
+                               horizon: float) -> Optional[MobilityPrediction]:
+        """Fallback prediction using simple heuristics when models not available."""
+        history = self.mobility_history[device_id]
+        
+        if len(history) < 2:
+            return None
+        
+        # Simple linear extrapolation
+        prev_location = history[-2]
+        time_diff = current_location.timestamp - prev_location.timestamp
+        
+        if time_diff <= 0:
+            return None
+        
+        # Calculate velocity
+        lat_velocity = (current_location.latitude - prev_location.latitude) / time_diff
+        lon_velocity = (current_location.longitude - prev_location.longitude) / time_diff
+        
+        # Extrapolate position
+        predicted_lat = current_location.latitude + lat_velocity * horizon
+        predicted_lon = current_location.longitude + lon_velocity * horizon
+        
+        predicted_location = LocationPoint(
+            latitude=predicted_lat,
+            longitude=predicted_lon,
+            timestamp=time.time() + horizon
+        )
+        
+        # Simple pattern classification based on speed
+        distance = self._calculate_distance(
+            prev_location.latitude, prev_location.longitude,
+            current_location.latitude, current_location.longitude
+        )
+        speed_ms = distance / time_diff if time_diff > 0 else 0
+        speed_kmh = speed_ms * 3.6
+        
+        if speed_kmh < 1:
+            mobility_pattern = MobilityPattern.STATIONARY
+        elif speed_kmh > 25:
+            mobility_pattern = MobilityPattern.VEHICLE
+        else:
+            mobility_pattern = MobilityPattern.RANDOM
+        
+        prediction = MobilityPrediction(
+            device_id=device_id,
+            predicted_location=predicted_location,
+            confidence=0.3,  # Low confidence for heuristic prediction
+            time_horizon=horizon,
+            mobility_pattern=mobility_pattern,
+            handoff_probability=0.1  # Conservative estimate
+        )
+        
+        return prediction
+    
+    def _extract_prediction_features(self, history: List[LocationPoint], 
+                                   current_location: LocationPoint) -> Optional[List[float]]:
+        """Extract features for prediction in same format as training data."""
+        if len(history) < 2:
+            return None
+        
+        try:
+            features = []
+            
+            # Current location
+            features.extend([current_location.latitude, current_location.longitude])
+            
+            # Velocity features
+            if len(history) >= 2:
+                prev_point = history[-2]
+                time_diff = current_location.timestamp - prev_point.timestamp
+                if time_diff > 0:
+                    lat_velocity = (current_location.latitude - prev_point.latitude) / time_diff
+                    lon_velocity = (current_location.longitude - prev_point.longitude) / time_diff
+                    features.extend([lat_velocity, lon_velocity])
+                else:
+                    features.extend([0.0, 0.0])
+            else:
+                features.extend([0.0, 0.0])
+            
+            # Acceleration features
+            if len(history) >= 3:
+                prev_prev_point = history[-3]
+                prev_point = history[-2]
+                time_diff1 = current_location.timestamp - prev_point.timestamp
+                time_diff2 = prev_point.timestamp - prev_prev_point.timestamp
+                
+                if time_diff1 > 0 and time_diff2 > 0:
+                    lat_acc = ((current_location.latitude - prev_point.latitude) / time_diff1 - 
+                              (prev_point.latitude - prev_prev_point.latitude) / time_diff2) / time_diff1
+                    lon_acc = ((current_location.longitude - prev_point.longitude) / time_diff1 - 
+                              (prev_point.longitude - prev_prev_point.longitude) / time_diff2) / time_diff1
+                    features.extend([lat_acc, lon_acc])
+                else:
+                    features.extend([0.0, 0.0])
+            else:
+                features.extend([0.0, 0.0])
+            
+            # Time-based features
+            current_time = datetime.fromtimestamp(current_location.timestamp)
+            hour_of_day = current_time.hour / 24.0
+            day_of_week = current_time.weekday() / 7.0
+            features.extend([hour_of_day, day_of_week])
+            
+            # Statistical features over recent history (last 6 points)
+            recent_points = history[-6:] if len(history) >= 6 else history
+            lats = [p.latitude for p in recent_points]
+            lons = [p.longitude for p in recent_points]
+            
+            lat_mean, lat_std = np.mean(lats), np.std(lats)
+            lon_mean, lon_std = np.mean(lons), np.std(lons)
+            
+            features.extend([lat_mean, lat_std, lon_mean, lon_std])
+            
+            return features
+            
+        except Exception as e:
+            logger.error(f"Error extracting prediction features: {e}")
+            return None
+    
+    def _extract_pattern_features_single(self, history: List[LocationPoint]) -> Optional[List[float]]:
+        """Extract pattern classification features for a single trajectory."""
+        if len(history) < 10:
+            return None
+        
+        try:
+            features = []
+            
+            # Calculate trajectory statistics
+            start_time = history[0].timestamp
+            end_time = history[-1].timestamp
+            duration_hours = (end_time - start_time) / 3600
+            
+            # Calculate total distance
+            total_distance = 0.0
+            for i in range(1, len(history)):
+                p1, p2 = history[i-1], history[i]
+                distance = self._calculate_distance(p1.latitude, p1.longitude, p2.latitude, p2.longitude)
+                total_distance += distance / 1000  # Convert to km
+            
+            avg_speed = (total_distance / duration_hours) if duration_hours > 0 else 0
+            
+            features.extend([total_distance, avg_speed, duration_hours, len(history)])
+            
+            # Spatial features
+            lats = [p.latitude for p in history]
+            lons = [p.longitude for p in history]
+            
+            lat_range = max(lats) - min(lats)
+            lon_range = max(lons) - min(lons)
+            lat_std = np.std(lats)
+            lon_std = np.std(lons)
+            
+            features.extend([lat_range, lon_range, lat_std, lon_std])
+            
+            # Temporal features
+            start_datetime = datetime.fromtimestamp(start_time)
+            start_hour = start_datetime.hour / 24.0
+            start_day = start_datetime.weekday() / 7.0
+            
+            features.extend([start_hour, start_day])
+            
+            # Speed variation
+            speeds = []
+            for i in range(1, len(history)):
+                p1, p2 = history[i-1], history[i]
+                time_diff = p2.timestamp - p1.timestamp
+                if time_diff > 0:
+                    distance = self._calculate_distance(p1.latitude, p1.longitude, p2.latitude, p2.longitude)
+                    speed = (distance / 1000) / (time_diff / 3600)  # km/h
+                    speeds.append(speed)
+            
+            if speeds:
+                speed_mean = np.mean(speeds)
+                speed_std = np.std(speeds)
+                speed_max = np.max(speeds)
+            else:
+                speed_mean = speed_std = speed_max = 0.0
+            
+            features.extend([speed_mean, speed_std, speed_max])
+            
+            return features
+            
+        except Exception as e:
+            logger.error(f"Error extracting pattern features: {e}")
+            return None
+    
+    def _prepare_lstm_sequence(self, history: List[LocationPoint], current_location: LocationPoint) -> Optional[np.ndarray]:
+        """Prepare LSTM input sequence for prediction."""
+        try:
+            # Get sequence length from model metadata
+            model_metadata = self.model_trainer.get_metadata("mobility_prediction_lstm")
+            if not model_metadata:
+                return None
+            
+            sequence_length = model_metadata.model_params.get("sequence_length", 20)
+            
+            # Need enough history for sequence
+            if len(history) < sequence_length:
+                return None
+            
+            # Take the last sequence_length points
+            sequence_points = history[-sequence_length:]
+            
+            # Extract features for each point in sequence
+            sequence_features = []
+            for j, point in enumerate(sequence_points):
+                features = []
+                
+                # Basic coordinates
+                features.extend([point.latitude, point.longitude])
+                
+                # Time-based features
+                time_dt = datetime.fromtimestamp(point.timestamp)
+                features.extend([
+                    time_dt.hour / 24.0,  # Normalized hour
+                    time_dt.weekday() / 7.0,  # Normalized day of week
+                    time_dt.month / 12.0,  # Normalized month
+                ])
+                
+                # Velocity features (if not first point in sequence)
+                if j > 0:
+                    prev_point = sequence_points[j-1]
+                    time_diff = point.timestamp - prev_point.timestamp
+                    if time_diff > 0:
+                        lat_velocity = (point.latitude - prev_point.latitude) / time_diff
+                        lon_velocity = (point.longitude - prev_point.longitude) / time_diff
+                        speed = np.sqrt(lat_velocity**2 + lon_velocity**2)
+                    else:
+                        lat_velocity = lon_velocity = speed = 0.0
+                else:
+                    lat_velocity = lon_velocity = speed = 0.0
+                
+                features.extend([lat_velocity, lon_velocity, speed])
+                
+                # Distance from sequence start
+                start_point = sequence_points[0]
+                distance_from_start = np.sqrt(
+                    (point.latitude - start_point.latitude)**2 + 
+                    (point.longitude - start_point.longitude)**2
+                )
+                features.append(distance_from_start)
+                
+                sequence_features.append(features)
+            
+            # Convert to numpy array and reshape for LSTM (1, timesteps, features)
+            sequence_array = np.array(sequence_features).reshape(1, sequence_length, -1)
+            
+            # Apply the same scaling as during training
+            if self.mobility_scaler:
+                # Reshape for scaling
+                n_samples, n_timesteps, n_features = sequence_array.shape
+                sequence_reshaped = sequence_array.reshape((n_samples * n_timesteps, n_features))
+                
+                # Scale
+                sequence_scaled = self.mobility_scaler.transform(sequence_reshaped)
+                
+                # Reshape back
+                sequence_array = sequence_scaled.reshape((n_samples, n_timesteps, n_features))
+            
+            return sequence_array
+            
+        except Exception as e:
+            logger.error(f"Error preparing LSTM sequence: {e}")
+            return None
+    
+    def _prepare_neural_network_features(self, history: List[LocationPoint], current_location: LocationPoint) -> Optional[List[float]]:
+        """Prepare flattened features for MLPRegressor neural network simulation."""
+        try:
+            # Get sequence length from model metadata
+            model_metadata = self.model_trainer.get_metadata("mobility_prediction_lstm")
+            if not model_metadata:
+                return None
+            
+            sequence_length = model_metadata.model_params.get("sequence_length", 15)
+            
+            # Need enough history for sequence
+            if len(history) < sequence_length:
+                return None
+            
+            # Take the last sequence_length points
+            sequence_points = history[-sequence_length:]
+            
+            # Extract features for each point in sequence and flatten
+            all_features = []
+            for j, point in enumerate(sequence_points):
+                features = []
+                
+                # Basic coordinates
+                features.extend([point.latitude, point.longitude])
+                
+                # Time-based features
+                time_dt = datetime.fromtimestamp(point.timestamp)
+                features.extend([
+                    time_dt.hour / 24.0,  # Normalized hour
+                    time_dt.weekday() / 7.0,  # Normalized day of week
+                    time_dt.month / 12.0,  # Normalized month
+                ])
+                
+                # Velocity features (if not first point in sequence)
+                if j > 0:
+                    prev_point = sequence_points[j-1]
+                    time_diff = point.timestamp - prev_point.timestamp
+                    if time_diff > 0:
+                        lat_velocity = (point.latitude - prev_point.latitude) / time_diff
+                        lon_velocity = (point.longitude - prev_point.longitude) / time_diff
+                        speed = np.sqrt(lat_velocity**2 + lon_velocity**2)
+                    else:
+                        lat_velocity = lon_velocity = speed = 0.0
+                else:
+                    lat_velocity = lon_velocity = speed = 0.0
+                
+                features.extend([lat_velocity, lon_velocity, speed])
+                
+                # Distance from sequence start
+                start_point = sequence_points[0]
+                distance_from_start = np.sqrt(
+                    (point.latitude - start_point.latitude)**2 + 
+                    (point.longitude - start_point.longitude)**2
+                )
+                features.append(distance_from_start)
+                
+                all_features.extend(features)  # Flatten into single array
+            
+            return all_features
+            
+        except Exception as e:
+            logger.error(f"Error preparing neural network features: {e}")
+            return None
+    
+    async def retrain_models_if_needed(self) -> None:
+        """Check if models need retraining and trigger if necessary."""
+        if not self.model_trainer:
+            logger.warning("No model trainer available for retraining")
+            return
+            
+        # This would typically check if we have enough new data to warrant retraining
+        # For now, we rely on the model trainer's existing models
+        logger.debug("Model retraining check - using existing pre-trained models")
     
     def _extract_features(self, device_id: str, location: LocationPoint) -> Optional[MobilityFeatures]:
         """Extract features from location history for ML."""
@@ -394,59 +903,12 @@ class MobilityPredictor:
             horizon  # Time horizon as feature
         ]
     
-    def _prepare_training_data(self) -> Tuple[List[List[float]], List[List[float]], List[float]]:
-        """Prepare training data from feature history."""
-        X = []
-        y_location = []
-        y_pattern = []
+    def get_model_performance(self) -> Dict[str, float]:
+        """Get performance metrics of loaded models."""
+        if not self.models_loaded or not self.model_performance:
+            return {"status": "no_models_loaded"}
         
-        for device_id, features_list in self.feature_history.items():
-            if device_id not in self.mobility_history:
-                continue
-            
-            locations = self.mobility_history[device_id]
-            
-            for i, features in enumerate(features_list[:-1]):
-                # Find corresponding future location
-                if i + 1 < len(locations):
-                    future_location = locations[i + 1]
-                    
-                    for horizon in self.prediction_horizons:
-                        feature_vector = self._features_to_vector(features, horizon)
-                        X.append(feature_vector)
-                        y_location.append([future_location.latitude, future_location.longitude])
-                        
-                        # Pattern classification (simplified)
-                        pattern_value = float(features.speed > 5.0)  # High mobility pattern
-                        y_pattern.append(pattern_value)
-        
-        return X, y_location, y_pattern
-    
-    def _evaluate_models(self, X: np.ndarray, y_location: List[List[float]]) -> float:
-        """Evaluate model performance."""
-        try:
-            # Simple train-test split evaluation
-            split_idx = int(0.8 * len(X))
-            X_train, X_test = X[:split_idx], X[split_idx:]
-            y_train, y_test = y_location[:split_idx], y_location[split_idx:]
-            
-            # Predict on test set
-            predictions = self.location_model.predict(X_test)
-            
-            # Calculate mean absolute error in meters
-            errors = []
-            for pred, actual in zip(predictions, y_test):
-                error = self._calculate_distance(pred[0], pred[1], actual[0], actual[1])
-                errors.append(error)
-            
-            mae = np.mean(errors)
-            accuracy = max(0.0, 1.0 - mae / 1000.0)  # Normalize by 1km
-            
-            return accuracy
-            
-        except Exception as e:
-            logger.error(f"Error evaluating models: {e}")
-            return 0.0
+        return self.model_performance.copy()
     
     def _classify_pattern(self, pattern_prob: float) -> MobilityPattern:
         """Classify mobility pattern from probability."""
@@ -492,13 +954,9 @@ class MobilityPredictor:
         except Exception:
             return 0.0
     
-    def _should_retrain(self) -> bool:
-        """Check if models should be retrained."""
-        return (
-            not self.is_trained or
-            time.time() - self.last_training_time > self.retrain_interval or
-            sum(len(features) for features in self.feature_history.values()) > self.max_history_points
-        )
+    def is_ready_for_prediction(self) -> bool:
+        """Check if predictor is ready to make predictions."""
+        return self.models_loaded and self.model_trainer is not None
     
     def _prediction_to_dict(self, prediction: MobilityPrediction) -> Dict[str, Any]:
         """Convert prediction to dictionary for serialization."""
@@ -548,8 +1006,8 @@ class MobilityPredictor:
             "total_distance": np.sum(distances) if distances else 0.0,
             "first_seen": history[0].timestamp if history else 0.0,
             "last_seen": history[-1].timestamp if history else 0.0,
-            "is_model_trained": self.is_trained,
-            "model_accuracy": self.model_accuracy
+            "models_loaded": self.models_loaded,
+            "model_performance": self.model_performance
         }
 
     # Validation-compatible method aliases
