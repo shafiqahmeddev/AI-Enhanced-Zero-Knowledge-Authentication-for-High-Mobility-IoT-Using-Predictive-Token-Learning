@@ -93,6 +93,20 @@ class ZKPASUnifiedDemo:
                 "requirements": ["numpy", "sklearn"],
                 "difficulty": "medium"
             },
+            "lstm-real": {
+                "name": "Enhanced LSTM with Real Datasets",
+                "description": "TensorFlow LSTM with Geolife & Beijing Taxi datasets",
+                "function": self._run_enhanced_lstm_demo,
+                "requirements": ["tensorflow", "numpy", "sklearn"],
+                "difficulty": "advanced"
+            },
+            "lstm-ultra": {
+                "name": "Ultra-High Accuracy LSTM",
+                "description": "Attention+Ensemble LSTM for maximum accuracy (60-80%)",
+                "function": self._run_ultra_high_accuracy_demo,
+                "requirements": ["tensorflow", "numpy", "sklearn"],
+                "difficulty": "expert"
+            },
             "security": {
                 "name": "Security Stress Test",
                 "description": "Byzantine fault tolerance and security validation",
@@ -530,6 +544,95 @@ class ZKPASUnifiedDemo:
             
             return metrics
     
+    async def _run_enhanced_lstm_demo(self) -> Dict[str, Any]:
+        """Run enhanced LSTM demo with real datasets and TensorFlow."""
+        print("🚀 Enhanced LSTM Mobility Prediction with Real Datasets")
+        print("=" * 60)
+        
+        try:
+            # Import the enhanced demo
+            from demos.demo_lstm_real_data import EnhancedLSTMDemo
+            
+            # Run the enhanced demo
+            demo = EnhancedLSTMDemo()
+            await demo.run_demo()
+            
+            # Return success metrics
+            metrics = {
+                "demo_type": "enhanced_lstm_real_data",
+                "status": "success",
+                "features": [
+                    "Real TensorFlow LSTM",
+                    "Geolife Trajectories dataset",
+                    "Beijing Taxi dataset", 
+                    "Advanced feature engineering",
+                    "GPS noise handling",
+                    "Improved accuracy metrics"
+                ]
+            }
+            
+            return metrics
+            
+        except ImportError as e:
+            print(f"⚠️ Missing dependency for enhanced LSTM: {e}")
+            print("📝 Please install TensorFlow: pip install tensorflow")
+            
+            # Fallback to basic LSTM demo
+            print("🔄 Running basic LSTM demo instead...")
+            return await self._run_lstm_demo()
+            
+        except Exception as e:
+            print(f"❌ Enhanced LSTM demo failed: {e}")
+            print("🔄 Running basic LSTM demo instead...")
+            return await self._run_lstm_demo()
+    
+    async def _run_ultra_high_accuracy_demo(self) -> Dict[str, Any]:
+        """Run ultra-high accuracy LSTM demo with all optimizations."""
+        print("🎯 Ultra-High Accuracy LSTM Mobility Prediction")
+        print("=" * 55)
+        print("🚀 Target: 60-80% accuracy, <80m error")
+        
+        try:
+            # Import the ultra-high accuracy demo
+            from demos.demo_ultra_high_accuracy_lstm import UltraHighAccuracyDemo
+            
+            # Run the demo
+            demo = UltraHighAccuracyDemo()
+            await demo.run_comprehensive_demo()
+            
+            # Return success metrics
+            metrics = {
+                "demo_type": "ultra_high_accuracy_lstm",
+                "status": "success",
+                "target_accuracy": "60-80%",
+                "target_error": "<80m",
+                "techniques": [
+                    "Attention mechanisms",
+                    "Ensemble learning (5 models)",
+                    "Advanced feature engineering (200+ features)",
+                    "Data augmentation",
+                    "Bidirectional LSTM",
+                    "Multi-head attention",
+                    "Robust preprocessing",
+                    "Multi-horizon predictions"
+                ]
+            }
+            
+            return metrics
+            
+        except ImportError as e:
+            print(f"⚠️ Missing dependency for ultra-high accuracy LSTM: {e}")
+            print("📝 Please ensure TensorFlow is installed: pip install tensorflow")
+            
+            # Fallback to enhanced LSTM
+            print("🔄 Running enhanced LSTM demo instead...")
+            return await self._run_enhanced_lstm_demo()
+            
+        except Exception as e:
+            print(f"❌ Ultra-high accuracy demo failed: {e}")
+            print("🔄 Running enhanced LSTM demo instead...")
+            return await self._run_enhanced_lstm_demo()
+    
     def _create_tensorflow_lstm(self):
         """Create TensorFlow LSTM model."""
         import tensorflow as tf
@@ -861,7 +964,12 @@ class ZKPASUnifiedDemo:
                     break
                 elif command in ['help', 'h']:
                     print("Available commands:")
-                    print("  basic, lstm, security, integration - Run specific demos")
+                    print("  basic - Basic ZKPAS authentication demo")
+                    print("  lstm - Standard LSTM mobility prediction")
+                    print("  lstm-real - Enhanced LSTM with real datasets")
+                    print("  lstm-ultra - Ultra-high accuracy LSTM (60-80%)")
+                    print("  security - Security stress testing")
+                    print("  integration - Complete integration test")
                     print("  all - Run all demos")
                     print("  health - Check system health")
                     print("  test - Run system tests")
@@ -886,7 +994,7 @@ class ZKPASUnifiedDemo:
 async def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="ZKPAS Unified Demo System")
-    parser.add_argument("--demo", choices=["basic", "lstm", "security", "integration", "all"], 
+    parser.add_argument("--demo", choices=["basic", "lstm", "lstm-real", "lstm-ultra", "security", "integration", "all"], 
                        help="Run specific demo directly")
     parser.add_argument("--health", action="store_true", help="Check system health")
     parser.add_argument("--test", action="store_true", help="Run system tests")
